@@ -49,6 +49,9 @@ export class UsageError extends Error {}
 export class TemplateError extends Error {}
 export class ExistsError extends Error {}
 
+// 派生项目根的版本戳文件名：生成时写入，check-projects 读取。契约单一来源在此。
+export const BASE_VERSION_FILE = '.base-version'
+
 // 生成物行尾统一 LF：源模板可能来自 autocrlf 克隆（CRLF），下游按 \n 解析。
 function render(text, { name, owner, repo }) {
   return text.replaceAll('\r\n', '\n')
@@ -204,7 +207,7 @@ export async function initProject({ target, name, owner = 'TODO-owner', repo = '
   // 版本戳：把源版本写进目标根 .base-version（单行版本号加换行），基座的 check-projects.mjs 靠它算派生项目落后几版。
   // 与「基座版本」输出行同策略：读不到源版本（自备 --source 无 package.json）时省略此文件，不算失败。
   if (baseVersion !== undefined) {
-    await writeFile(join(target, '.base-version'), `${baseVersion}\n`, 'utf8')
+    await writeFile(join(target, BASE_VERSION_FILE), `${baseVersion}\n`, 'utf8')
   }
 
   const license = join(target, 'LICENSE')
