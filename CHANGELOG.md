@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- 同步基座 `pack.mjs` 的 `--refresh` 刷新模式：改基座后在基座目录运行 `node scripts/pack.mjs <本仓库> --refresh` 只重建 `skills/skill-starter/`，根文件、`test/`、`evals/` 与 CHANGELOG 不再被全量重打包清掉（本次技能目录即用该模式刷新）
+
+### Changed
+
+- `AGENTS.md` 补「改动边界」：`skills/skill-starter/`（入口、生成器、payload）是基座生成物不手改，改动走基座后刷新；根文件、`test/`、`evals/` 是本仓库内容可改；刷新后须把 `package.json` 的 version 与 CHANGELOG 对齐到基座版本（`test/e2e.test.mjs` 查三处版本一致）
+
 ## [0.2.1] - 2026-10-22
 
 ### Added
