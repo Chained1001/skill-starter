@@ -1,6 +1,6 @@
 {
   "name": "framework-base",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "description": "可复制到项目根的 skill 开发基座，含模板、校验器与测试",
   "license": "MIT",

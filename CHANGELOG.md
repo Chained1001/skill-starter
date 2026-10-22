@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-22
+
+### Changed
+
+- 随基座 v0.3.1 刷新：payload 精简六个惰性根文件（README、AGENTS、CHANGELOG 模板与 `.gitignore`、`.gitattributes`、`.github/`，59 个降至 53 个——生成项目时它们会被根模板渲染件无条件覆盖，携带纯属浪费）；`LICENSE` 与 `package.json` 例外保留（版权行与版本号的读取源）。生成项目的产物与门禁经端到端冒烟验证不变
+
 ## [0.3.0] - 2026-10-22
 
 ### Added
