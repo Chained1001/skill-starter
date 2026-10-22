@@ -4,24 +4,29 @@
 // 退出码：0 成功，1 业务失败（目标已存在），2 参数错误，3 模板缺失。
 import { existsSync } from 'node:fs'
 import { cp, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
-import { basename, dirname, join, resolve } from 'node:path'
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 // 缺省源：脚本所在的基座根。--source 可换成随技能携带的基座内容目录。
-const SOURCE = fileURLToPath(new URL('..', import.meta.url))
+// resolve() 剥掉 fileURLToPath 的尾分隔符（Windows 为 \，POSIX 为 /）：cp filter 里按
+// sourceDir.length + 1 切相对路径，尾分隔符会让切片多切一位、filter 永不命中。
+const SOURCE = resolve(fileURLToPath(new URL('..', import.meta.url)))
 const USAGE = '用法：init-project.mjs <目标目录> [--name <包名>] [--owner <owner>] [--repo <repo>] [--author <名>] [--source <目录>] [--dry-run] [--force] [--json] [--help]'
 const NAME_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 
-// 只在基座成立的路径：示例、示例测试、评测示例、生成器与打包器及其测试。
-const DROP = [
+// 只在基座成立的路径（相对基座根，正斜杠；pack.mjs 复用此清单）：VCS 与依赖目录、
+// 示例、示例测试、评测示例、生成器与打包器及其测试。单一来源，改这里须同次跑 pack 测试。
+export const DROP = [
+  '.git',
+  'node_modules',
   'examples',
   'evals',
-  join('scripts', 'init-project.mjs'),
-  join('scripts', 'pack.mjs'),
-  join('test', 'base-only.test.mjs'),
-  join('test', 'examples.test.mjs'),
-  join('test', 'init-project.test.mjs'),
-  join('test', 'pack.test.mjs'),
+  'scripts/init-project.mjs',
+  'scripts/pack.mjs',
+  'test/base-only.test.mjs',
+  'test/examples.test.mjs',
+  'test/init-project.test.mjs',
+  'test/pack.test.mjs',
 ]
 
 // 根文件：模板名 → 项目内名字。
@@ -68,8 +73,18 @@ async function isDirectory(dir) {
   }
 }
 
+// rel 可能来自 cp filter（平台分隔符）也可能来自 walkFiles（join 生成），统一按正斜杠与 DROP 比较。
 function isDropped(rel) {
-  return DROP.some((p) => rel === p || rel.startsWith(`${p}\\`) || rel.startsWith(`${p}/`))
+  const relPosix = rel.split(sep).join('/')
+  return DROP.some((p) => relPosix === p || relPosix.startsWith(`${p}/`))
+}
+
+// parent 是否包含 child（或两者相同）。不同盘符等无法比较时按不包含处理。
+function contains(parent, child) {
+  const rel = relative(parent, child)
+  if (rel === '') return true
+  if (isAbsolute(rel)) return false
+  return rel.split(sep)[0] !== '..'
 }
 
 async function walkFiles(dir, prefix = '') {
@@ -106,10 +121,30 @@ async function readRootTemplate(rootTemplates, from) {
   }
 }
 
+// 版本号来自源目录的 package.json：--source 模式即随技能携带 payload 的版本，缺省即基座版本。
+// 自备的 --source 目录可能没有 package.json，读不到时不输出版本行，不算失败。
+async function readSourceVersion(dir) {
+  try {
+    const pkg = JSON.parse(await readFile(join(dir, 'package.json'), 'utf8'))
+    return typeof pkg.version === 'string' && pkg.version !== '' ? pkg.version : undefined
+  } catch {
+    return undefined
+  }
+}
+
 export async function initProject({ target, name, owner = 'TODO-owner', repo = 'TODO-repo', author, source, dryRun = false, force = false }) {
   const projectName = name ?? basename(target)
   if (!NAME_PATTERN.test(projectName) || projectName.length > 64) {
     throw new UsageError(`项目名 "${projectName}" 不合法：须为 1–64 位小写英文、数字与单连字符。用 --name 指定合法名，或换一个目录名`)
+  }
+
+  const sourceDir = resolve(source === undefined ? SOURCE : source)
+  if (source !== undefined && !(await isDirectory(sourceDir))) {
+    throw new TemplateError(`--source 指向的目录不存在：${source}。请改为包含 templates/root/ 的基座内容目录`)
+  }
+  // 自拷贝守卫：目标在源目录内部（或源在目标内部）时，cp 会在复制过程中读写自身，直接拒绝。
+  if (contains(sourceDir, target) || contains(target, sourceDir)) {
+    throw new UsageError(`目标不能在基座内部：${target} 与源目录 ${sourceDir} 相互包含，复制会把基座拷进自己。请把目标目录放到源目录之外`)
   }
 
   const exists = existsSync(target)
@@ -117,10 +152,6 @@ export async function initProject({ target, name, owner = 'TODO-owner', repo = '
     throw new ExistsError(`目标已存在且非空：${target}。换一个目录，或加 --force`)
   }
 
-  const sourceDir = source === undefined ? SOURCE : resolve(source)
-  if (source !== undefined && !(await isDirectory(sourceDir))) {
-    throw new TemplateError(`--source 指向的目录不存在：${source}。请改为包含 templates/root/ 的基座内容目录`)
-  }
   const rootTemplates = join(sourceDir, 'templates', 'root')
   for (const from of REQUIRED_ROOT_TEMPLATES) {
     // 打包产物里根 Markdown 模板是 .md.tpl 形态，两种名字都算齐备；生成时先还原再渲染。
@@ -134,23 +165,26 @@ export async function initProject({ target, name, owner = 'TODO-owner', repo = '
   }
 
   const tplFiles = (await walkFiles(sourceDir)).filter((rel) => rel.endsWith('.md.tpl') && !isDropped(rel))
+  const baseVersion = await readSourceVersion(sourceDir)
   const planned = [
     `复制 ${sourceDir} 到 ${target}`,
     ...DROP.map((p) => `删除 ${p}`),
     ...ROOT_FILES.map(([, to]) => `写入 ${to}`),
     ...tplFiles.map((rel) => `还原 ${rel} 为 ${rel.slice(0, -'.tpl'.length)}`),
   ]
-  if (dryRun) return { action: 'dry-run', target, name: projectName, planned }
+  if (dryRun) return { action: 'dry-run', target, name: projectName, baseVersion, planned }
 
   await cp(sourceDir, target, {
     recursive: true,
     force: true,
     filter: (src) => {
+      // sourceDir 已无尾分隔符，slice 恰好剥掉前缀与分隔符，rel 是真实相对路径。
       const rel = src.slice(sourceDir.length + 1)
       return !isDropped(rel)
     },
   })
 
+  // 后置 rm 兜底：filter 之外再删一遍 DROP（如目标原本就带这些目录的 --force 场景）。
   for (const p of DROP) await rm(join(target, p), { recursive: true, force: true })
 
   // 先还原 .md.tpl 再渲染根文件：打包产物里 templates/root/ 的 Markdown 模板也是 .tpl 形态，
@@ -174,8 +208,10 @@ export async function initProject({ target, name, owner = 'TODO-owner', repo = '
     action: 'created',
     target,
     name: projectName,
+    baseVersion,
     files: ROOT_FILES.map(([, to]) => to),
     next: [
+      '未提供 --author 时，把 LICENSE 的版权行改为自己',
       '补全 README.md、AGENTS.md、CHANGELOG.md、package.json 里的 TODO',
       'node scripts/init-skill.mjs <技能名> 生成第一个技能',
       'git init',
@@ -244,6 +280,7 @@ async function main() {
       for (const line of result.planned) console.log(`- ${line}`)
     } else {
       console.log(`已生成 ${result.target}`)
+      if (result.baseVersion) console.log(`基座版本 ${result.baseVersion}`)
       console.log('接下来：')
       for (const line of result.next) console.log(`- ${line}`)
     }
@@ -253,7 +290,8 @@ async function main() {
       process.exitCode = 2
       return
     }
-    const code = error instanceof TemplateError ? 'E_TEMPLATE' : 'E_EXISTS'
+    // 未知错误（如 EACCES/ENOTDIR 等底层 IO 失败）不再误标 E_EXISTS，统一报 E_IO。
+    const code = error instanceof TemplateError ? 'E_TEMPLATE' : error instanceof ExistsError ? 'E_EXISTS' : 'E_IO'
     if (options.json) {
       console.log(JSON.stringify({ ok: false, errors: [{ code, message: error.message }], data: {} }, null, 2))
     } else {

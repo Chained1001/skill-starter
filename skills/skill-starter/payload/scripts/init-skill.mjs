@@ -3,7 +3,7 @@
 // 用法：init-skill.mjs <name> [--description "..."] [--workflow] [--reference] [--asset] [--agent] [--eval] [--all] [--root <路径>] [--dry-run] [--force] [--json] [--help]
 // 退出码：0 成功，1 业务失败（已存在且未 --force），2 参数错误，3 模板缺失。
 import { existsSync, readdirSync } from 'node:fs'
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
@@ -24,6 +24,7 @@ const SCAFFOLDS = [
 
 export class UsageError extends Error {}
 export class TemplateError extends Error {}
+export class ExistsError extends Error {}
 
 // description 要进 YAML 单行值：换行压成空格，可能被解析成非字符串的一律加引号。
 function yamlValue(text) {
@@ -50,6 +51,9 @@ function nextWorkflowIndex(dir) {
     .map((n) => /^(\d{2})-/.exec(n)?.[1])
     .filter(Boolean)
     .map(Number)
+  if (nums.length && Math.max(...nums) >= 99) {
+    throw new UsageError(`流程序号已达上限 99：${wf} 已有 99 号流程。先整理合并既有流程，腾出序号再生成`)
+  }
   return String(nums.length ? Math.max(...nums) + 1 : 1).padStart(2, '0')
 }
 
@@ -67,6 +71,19 @@ export function renderTitled(template, { title }) {
 
 function renderEval(template, { name }) {
   return renderTitled(template, { title: `${name} 冒烟` }).replace(/^- 被测技能：.*$/m, `- 被测技能：skills/${name}`)
+}
+
+// 读模板：只有「文件不存在」（ENOENT）才算模板缺失；其余错误（权限、被目录占位等）
+// 是底层 IO 问题，原样上抛由 main 统一报 E_IO，不得误标成 E_TEMPLATE。
+async function readTemplate(file) {
+  try {
+    return await readFile(file, 'utf8')
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      throw new TemplateError(`模板缺失：${error.path ?? file}。请确认 templates/ 未被删除`)
+    }
+    throw error
+  }
 }
 
 export async function initSkill({
@@ -89,31 +106,27 @@ export async function initSkill({
   const relFile = join(relDir, 'SKILL.md')
   const exists = existsSync(dir)
   if (exists && !force) {
-    throw new Error(`已存在：${relDir}。加 --force 覆盖，或换一个名字`)
+    throw new ExistsError(`已存在：${relDir}。加 --force 覆盖，或换一个名字`)
   }
 
   const files = []
-  try {
-    const skillTemplate = await readFile(TEMPLATE, 'utf8')
-    files.push({ rel: relFile, text: renderSkill(skillTemplate, { name, description }) })
+  const skillTemplate = await readTemplate(TEMPLATE)
+  files.push({ rel: relFile, text: renderSkill(skillTemplate, { name, description }) })
 
-    if (withWorkflow) {
-      const seq = nextWorkflowIndex(dir)
-      const flow = await readFile(WORKFLOW_TEMPLATE, 'utf8')
-      files.push({ rel: join(relDir, 'workflows', `${seq}-TODO.md`), text: renderWorkflow(flow, { name, seq }) })
-    }
-    const enabled = { withReference, withAsset, withAgent }
-    for (const s of SCAFFOLDS) {
-      if (!enabled[s.key]) continue
-      const text = await readFile(join(TEMPLATES, s.from), 'utf8')
-      files.push({ rel: join(relDir, s.path), text: renderTitled(text, { title: s.title }) })
-    }
-    if (withEval) {
-      const text = await readFile(EVAL_TEMPLATE, 'utf8')
-      files.push({ rel: join('evals', 'cases', `${name}.md`), text: renderEval(text, { name }) })
-    }
-  } catch (error) {
-    throw new TemplateError(`模板缺失：${error.path ?? TEMPLATES}。请确认 templates/ 未被删除`)
+  if (withWorkflow) {
+    const seq = nextWorkflowIndex(dir)
+    const flow = await readTemplate(WORKFLOW_TEMPLATE)
+    files.push({ rel: join(relDir, 'workflows', `${seq}-TODO.md`), text: renderWorkflow(flow, { name, seq }) })
+  }
+  const enabled = { withReference, withAsset, withAgent }
+  for (const s of SCAFFOLDS) {
+    if (!enabled[s.key]) continue
+    const text = await readTemplate(join(TEMPLATES, s.from))
+    files.push({ rel: join(relDir, s.path), text: renderTitled(text, { title: s.title }) })
+  }
+  if (withEval) {
+    const text = await readTemplate(EVAL_TEMPLATE)
+    files.push({ rel: join('evals', 'cases', `${name}.md`), text: renderEval(text, { name }) })
   }
 
   if (dryRun) return { action: 'dry-run', path: relFile, files: files.map((f) => f.rel), overwrite: exists }
@@ -123,8 +136,14 @@ export async function initSkill({
   for (const f of files) {
     const target = join(root, f.rel)
     const tmp = `${target}.tmp`
-    await writeFile(tmp, f.text, 'utf8')
-    await rename(tmp, target)
+    try {
+      await writeFile(tmp, f.text, 'utf8')
+      await rename(tmp, target)
+    } catch (error) {
+      // rename 失败时清掉半截临时文件再上抛，不留垃圾。
+      await rm(tmp, { force: true })
+      throw error
+    }
   }
   return { action: 'created', path: relFile, files: files.map((f) => f.rel), overwrite: exists }
 }
@@ -200,7 +219,8 @@ async function main() {
       process.exitCode = 2
       return
     }
-    const code = error instanceof TemplateError ? 'E_TEMPLATE' : 'E_EXISTS'
+    // 未知错误（如 EACCES/ENOTDIR 等底层 IO 失败）不再误标 E_EXISTS，统一报 E_IO。
+    const code = error instanceof TemplateError ? 'E_TEMPLATE' : error instanceof ExistsError ? 'E_EXISTS' : 'E_IO'
     if (options.json) {
       console.log(JSON.stringify({ ok: false, errors: [{ code, message: error.message }], data: {} }, null, 2))
     } else {

@@ -29,6 +29,11 @@ cliTest('未知参数退出码为 2', () => {
   assert.equal(r.status, 2)
 })
 
+cliTest('以 - 开头的参数（含单独的 -）退出码为 2', () => {
+  assert.equal(run(validate, ['-x', join(fixtures, 'valid')]).status, 2)
+  assert.equal(run(validate, ['-']).status, 2)
+})
+
 cliTest('--help 输出用法且退出码为 0', () => {
   const r = run(validate, ['--help'])
   assert.equal(r.status, 0)
@@ -89,6 +94,22 @@ cliTest('init-skill 目录已存在时退出码为 1，--force 可覆盖', async
     await mkdir(join(root, 'skills', 'taken'), { recursive: true })
     assert.equal(run(init, ['taken', '--root', root]).status, 1)
     assert.equal(run(init, ['taken', '--root', root, '--force']).status, 0)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+cliTest('init-skill 底层 IO 错误报 E_IO（退出码 1），不再误标 E_EXISTS', async () => {
+  const { mkdtemp, rm, writeFile } = await import('node:fs/promises')
+  const root = await mkdtemp(join(await tmpBase(), 'io-'))
+  try {
+    // skills 被普通文件占位：建 skills/<name> 目录必失败（ENOTDIR 一类底层 IO 错误）。
+    await writeFile(join(root, 'skills'), '不是目录', 'utf8')
+    const r = run(init, ['io-skill', '--root', root, '--json'])
+    assert.equal(r.status, 1, `底层 IO 失败应退出码 1，实际 ${r.status}：${r.stdout}\n${r.stderr}`)
+    const obj = JSON.parse(r.stdout)
+    assert.equal(obj.ok, false)
+    assert.equal(obj.errors[0].code, 'E_IO', '未知错误应报 E_IO，不得误标 E_EXISTS')
   } finally {
     await rm(root, { recursive: true, force: true })
   }

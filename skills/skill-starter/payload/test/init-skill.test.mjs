@@ -1,10 +1,10 @@
 import { after, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { existsSync } from 'node:fs'
-import { mkdir, readFile, rm, rmdir } from 'node:fs/promises'
+import { mkdir, readdir, readFile, rm, rmdir, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { initSkill, renderSkill } from '../scripts/init-skill.mjs'
+import { UsageError, initSkill, renderSkill } from '../scripts/init-skill.mjs'
 import { validateRepo } from '../scripts/validate.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -122,6 +122,41 @@ test('--reference / --asset / --agent 各生成一个骨架，标题已替换', 
     assert.match(agent, /^# 子代理$/m)
     for (const text of [ref, asset, agent]) assert.doesNotMatch(text, /\{\{title\}\}/)
   })
+})
+
+test('--force --workflow 不与已有流程重号：下一个序号接在最大序号后', async () => {
+  await withSandbox(async (root) => {
+    const wf = join(root, 'skills', 'reflow', 'workflows')
+    await mkdir(wf, { recursive: true })
+    await writeFile(join(wf, '01-切分.md'), '# 切分\n', 'utf8')
+    await initSkill({ root, name: 'reflow', description: '当需要重排流程时使用。', withWorkflow: true, force: true })
+    assert.ok(existsSync(join(wf, '01-切分.md')), '已有流程应保留')
+    assert.ok(existsSync(join(wf, '02-TODO.md')), '新流程应编号 02，不得与 01 重号')
+    assert.deepEqual((await readdir(wf)).sort(), ['01-切分.md', '02-TODO.md'])
+  })
+})
+
+test('已有最大流程序号达到 99 时拒绝继续生成', async () => {
+  await withSandbox(async (root) => {
+    const wf = join(root, 'skills', 'capped', 'workflows')
+    await mkdir(wf, { recursive: true })
+    await writeFile(join(wf, '99-收尾.md'), '# 收尾\n', 'utf8')
+    await assert.rejects(
+      () => initSkill({ root, name: 'capped', description: '当需要测试上限时使用。', withWorkflow: true, force: true }),
+      (error) => error instanceof UsageError && error.message.includes('流程序号已达上限 99'),
+    )
+    assert.equal(existsSync(join(wf, '100-TODO.md')), false, '不得生成三位数序号')
+  })
+})
+
+test('渲染期错误不被包装成模板缺失（模板读取只收窄 ENOENT）', async () => {
+  // readTemplate 只把 ENOENT 转为 TemplateError；渲染函数自身的错误（如模板不是字符串）
+  // 须原样上抛，由 main 统一归 E_IO，不得误报「模板缺失」。此处用非法模板输入佐证：
+  // 非 ENOENT 的错误不是 TemplateError、也不带「模板缺失」字样。
+  assert.throws(
+    () => renderSkill(null, { name: 'bad-input', description: '当需要测试错误归类时使用。' }),
+    (error) => !(error instanceof Error && error.message.includes('模板缺失')),
+  )
 })
 
 test('--eval 生成仓库级用例，被测技能写成实际路径', async () => {

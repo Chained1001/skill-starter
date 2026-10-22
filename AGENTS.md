@@ -4,7 +4,7 @@
 
 ## 项目是什么
 
-本仓库发布 skill-starter 技能：把随技能携带的基座内容（`skills/skill-starter/payload/`）生成为一个可直接开工的 skill 开发项目，规范、模板、校验器与测试一次到位。给要新开 skill 开发项目的开发者用，通过 `npx skills add zhanghui/skill-starter` 安装。`skills/skill-starter/` 由打包器从基座生成（当前基座 v0.2.1），改基座后在基座目录运行 `node scripts/pack.mjs <本仓库路径> --refresh` 重建该目录；根文件与 `test/`、`evals/` 是本仓库自己的内容，见下文「改动边界」。
+本仓库发布 skill-starter 技能：把随技能携带的基座内容（`skills/skill-starter/payload/`）生成为一个可直接开工的 skill 开发项目，规范、模板、校验器与测试一次到位。给要新开 skill 开发项目的开发者用，通过 `npx skills add Chained1001/skill-starter` 安装。`skills/skill-starter/` 由打包器从基座生成（当前基座版本见该目录 SKILL.md 的 `metadata.base-version`），改基座后在基座目录运行 `node scripts/pack.mjs <本仓库路径> --refresh` 重建该目录；根文件与 `test/`、`evals/` 是本仓库自己的内容，见下文「改动边界」。
 
 ## 开始之前
 

@@ -4,7 +4,7 @@
 // 退出码：0 成功，1 业务失败（不是 git 仓库、已有钩子且未加 --force），2 参数错误。
 import { existsSync } from 'node:fs'
 import { chmod, mkdir, writeFile } from 'node:fs/promises'
-import { join, resolve } from 'node:path'
+import { isAbsolute, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 const USAGE = '用法：install-hooks.mjs [路径] [--package-dir <相对路径>] [--force] [--dry-run] [--json] [--help]'
@@ -29,7 +29,20 @@ export class UsageError extends Error {}
 export class NotGitRepoError extends Error {}
 export class HookExistsError extends Error {}
 
+// packageDir 会拼进钩子脚本的 `cd "$root/${packageDir}"：绝对路径没有 $root 前缀可依，
+// " ` $ 与反斜杠则会破坏 sh 引号或被展开，一律在入口拒绝。
+function validatePackageDir(packageDir) {
+  if (!packageDir) return
+  if (isAbsolute(packageDir)) {
+    throw new UsageError(`--package-dir 须为相对仓库根的路径，当前为 "${packageDir}"`)
+  }
+  if (/["`$\\]/.test(packageDir)) {
+    throw new UsageError(`--package-dir 不得含 "、\`、$ 或反斜杠，路径分隔请用 /，当前为 "${packageDir}"`)
+  }
+}
+
 export async function installHooks({ root = '.', packageDir = '', force = false, dryRun = false } = {}) {
+  validatePackageDir(packageDir)
   const dir = resolve(root)
   if (!existsSync(join(dir, '.git'))) {
     throw new NotGitRepoError(`不是 git 仓库：${dir}。先运行 git init`)
@@ -51,6 +64,7 @@ export async function installHooks({ root = '.', packageDir = '', force = false,
 
 export function parseArgs(argv) {
   const options = { root: '.', packageDir: '', force: false, dryRun: false, json: false, help: false }
+  const positional = []
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]
     if (arg === '--package-dir') options.packageDir = requireValue(argv, ++i, arg)
@@ -59,8 +73,11 @@ export function parseArgs(argv) {
     else if (arg === '--json') options.json = true
     else if (arg === '--help' || arg === '-h') options.help = true
     else if (arg.startsWith('--')) throw new UsageError(`未知参数 ${arg}。${USAGE}`)
-    else options.root = arg
+    else positional.push(arg)
   }
+  // 第二个位置参数不再静默覆盖 root，与兄弟脚本一致报「多余的参数」。
+  if (positional.length > 1) throw new UsageError(`多余的参数 ${positional.slice(1).join(' ')}。${USAGE}`)
+  if (positional.length === 1) options.root = positional[0]
   return options
 }
 

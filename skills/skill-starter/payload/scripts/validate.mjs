@@ -225,11 +225,12 @@ export async function validateRepo(root) {
   }
 
   // README 技能表是使用者发现技能的入口，技能增删后最容易漏同步（约定，脚本检查）。
+  // 只认表格行（首列为技能名）：散文顺带提及不算入索引，否则这条检查形同虚设。
   const readme = join(root, 'README.md')
   if (existsSync(readme)) {
     const readmeText = await readFile(readme, 'utf8')
     for (const name of skillNames) {
-      if (!readmeText.includes(name)) {
+      if (!new RegExp(`^\\|\\s*${name}\\s*\\|`, 'm').test(readmeText)) {
         errors.push({ code: 'E_INDEX', file: 'README.md', message: `未提及技能 ${name}，请更新技能列表` })
       }
     }
@@ -285,6 +286,8 @@ export function parseArgs(argv) {
     if (arg === '--json') options.json = true
     else if (arg === '--help' || arg === '-h') options.help = true
     else if (arg.startsWith('--')) throw new Error(`未知参数 ${arg}。${USAGE}`)
+    // 以 - 开头的一律按未知参数拒绝（含单短横与单独的 -），不支持把 - 或 -x 之类当路径。
+    else if (arg.startsWith('-')) throw new Error(`未知参数 ${arg}。以 - 开头的输入会被当成参数，路径不能用 - 开头。${USAGE}`)
     else positional.push(arg)
   }
   if (positional.length > 1) throw new Error(`多余的参数 ${positional.slice(1).join(' ')}。${USAGE}`)

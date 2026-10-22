@@ -4,9 +4,40 @@
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-22
+
 ### Added
 
 - `pack.mjs` 新增 `--refresh` 刷新模式：只删除并重建 `<目标>/skills/skill-starter/`（SKILL.md、生成器、payload），不调用 `initProject`、不跑任何还原步骤——全量模式复用 `initProject`，其 `.md.tpl` 还原会扫整个目标树，把既有 payload 的 `.tpl` 改回 `.md`，新旧混杂（v0.2.1 发布 skill-starter 仓库时实际踩中，被迫清空重打包绕行）；刷新不动根文件、`test/`、`evals/` 与 `package.json` 的 version，版本跟进由人把仓库 version 与 CHANGELOG 对齐到基座版本（仓库 e2e 的三处版本一致断言强制）。技能组装抽为全量与刷新共用的 `assembleSkill`；`test/pack.test.mjs` 补刷新测试（保留仓库自有序且产物与全量一致、预置旧 payload 不腐蚀、目标不存在退出码 1、`--dry-run` 不落盘、`--help` 含 `--refresh`）；`规范/02` 脚本清单 pack 行补「或刷新」
+
+- `init-project` 生成成功时 stdout 增加一行「基座版本 X.Y.Z」：版本读源目录的 `package.json`（`--source` 模式即随技能携带 payload 的版本，缺省即基座版本，读不到时省略该行）；`pack` 技能入口 SKILL.md 的指引列表同步为六条
+- `init-project` 的下一步指引第一条补「未提供 --author 时，把 LICENSE 的版权行改为自己」
+- 错误码新增 `E_IO`（退出码 1）：三脚本对非 Template/Exists 的未知错误（如 EACCES、ENOTDIR 等底层 IO 失败）统一报 `E_IO`，不再误标 `E_EXISTS`；`规范/02` 错误码表同次登记
+
+### Fixed
+
+- 修复 `init-project` 的源头切片偏移（P1）：`SOURCE` 此前是带尾分隔符的路径（Windows 为 `\`），cp filter 里 `src.slice(sourceDir.length + 1)` 多切一位、DROP 永不命中，全靠后置 rm 兜底；现在 `resolve()` 剥掉尾分隔符，filter 真正生效
+- `init-project` 新增自拷贝守卫：目标目录在源目录内部（或包含源目录）时抛 `UsageError`（退出码 2），错误信息写明「目标不能在基座内部」，任何写盘前拒绝
+- `DROP` 收敛为单一来源并导出复用：`init-project` 的排除清单补 `.git` 与 `node_modules`（cp filter 与清单判断共用），`pack.mjs` 改为 import 该清单加自己的增量（`test/.tmp` 与 skills/ 规则），删除重复清单
+- `init-skill` 模板读取的 try/catch 收窄：仅 `ENOENT` 转 `TemplateError`，其余错误原样上抛（由 `E_IO` 兜底），渲染期错误不再被误报「模板缺失」
+- `init-skill` 的 `--workflow` 序号达到上限时拒绝生成：已有最大序号 ≥99 抛 `UsageError`（「流程序号已达上限 99」），不产出三位数序号
+- `init-skill` 写文件的 rename 失败时清理半截临时文件（`rm --force`）后重抛，不留垃圾
+- `install-hooks` 的 `--package-dir` 入口校验：必须为相对路径，且不含 `"`、`` ` ``、`$`、`\`（含则提示路径分隔用 `/`），非法值报参数错误（退出码 2）
+- `install-hooks` 第二个位置参数不再静默覆盖 root，报「多余的参数」退出码 2，对齐兄弟脚本
+- `validate` 的 `E_INDEX` 收紧为表格行匹配（`^\|\s*<name>\s*\|`）：README 散文顺带提及技能名不再算入索引，技能表行含技能名才通过
+- `validate` 的 `parseArgs` 拒绝一切以 `-` 开头的非 `--` 参数（含单短横与单独的 `-`），报未知参数退出码 2
+- `规范/02` 对齐脚本实际行为：`E_TEMPLATE` 触发条件覆盖三脚本，`E_EXISTS` 补 init-project/pack 场景；「先写临时文件再重命名」限定为批量生成骨架类场景；测试临时目录允许系统临时目录；评测覆盖下限改为「每个技能至少一条用例（类型由人核对）」
+- 测试补零覆盖分支：`E_LINK` 越出技能目录（新夹具 `outside-link`）、`E_NO_SKILLS_DIR` 两分支（目录缺失/skills 是文件）、`E_COMPATIBILITY` 长度边界（500 过/501 报）；`install-hooks` 补 CLI 测试（`--help` 0、未知参数 2、非 git 仓库 1）
+
+### Changed
+
+- 框架树第一节补 `test/standards.test.mjs` 行（此前漏列，违反本文件「每个文件都列出」的契约），并注明占位文件不列
+- 规范 09：派生删除清单与 init-project 的 DROP 对齐（删除整个 `evals/`，补 pack.mjs 与 pack.test.mjs——此前手工照做会留下 import 已删文件的损坏脚本）；占位符节补 `{{title}}` 的机器替换口径；检查节补 templates.test.mjs 按设计跳过；新增「派生后的同步范围」小节（升级跟随复制、永不回灌两清单与 diff 核对法）
+- 规范 01：长度上限改为「SKILL.md 正文不超过 500 行」，与校验器口径一致
+- 规范 03：`A-` 编号补派单验收标准用途及号段独立说明；仓库名一致性补 `init-project --name` 例外
+- 框架根 README：双份根文件清单补 `.gitattributes`，检查范围句与 base-only.test.mjs 实际比对的三对对齐，验证节收敛为指针
+- 基座 README：双份清单补 `.gitattributes`；init-skill 模板读取范围改为 `templates/skill/` 与 `templates/eval/`；常用命令补 pack.mjs
+- 根 README 模板：前置条件补 git；新增「快速开始」五步清单（与生成器 next 输出一致，上手指引持久化进生成项目），副本同步
 
 ## [0.2.1] - 2026-10-22
 

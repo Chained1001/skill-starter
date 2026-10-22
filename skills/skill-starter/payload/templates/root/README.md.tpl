@@ -10,9 +10,17 @@ TODO：一句话，写明解决什么问题、给谁用。
 npx skills add {{owner}}/{{repo}}
 ```
 
-前置条件：Node.js 24 及以上。
+前置条件：Node.js 24 及以上、git（提交前校验钩子需要）。
 
 安装后确认：TODO：给一条命令或一次对话，能看出装成功（例如触发冒烟技能并看到固定回复）。
+
+## 快速开始
+
+1. 补全 `README.md`、`AGENTS.md`、`CHANGELOG.md`、`package.json` 里的 TODO；派生时未提供 `--author` 的，改 `LICENSE` 的版权行。
+2. `node scripts/init-skill.mjs <技能名> --description "当…"` 生成第一个技能。
+3. `git init`。
+4. `node scripts/install-hooks.mjs` 安装提交前校验。
+5. `npm run validate && npm test`。
 
 ## 技能列表
 

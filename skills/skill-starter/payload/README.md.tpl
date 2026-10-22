@@ -11,7 +11,7 @@
 - `skills/` 是发布内容，基座内只留 `.gitkeep` 占位。
 - `examples/skills/` 放两个示例：`framework-smoke`（最小技能）与 `example-pipeline`（多步骤分层写法）。派生时删除。
 - `docs/规范/` 是 `../规范/` 的逐字副本，不在本目录修改，由 `test/standards.test.mjs` 比对。
-- 根文件 `README.md`、`AGENTS.md`、`CHANGELOG.md`、`.gitignore` 同时存在于本目录与 `templates/root/`：本目录的供基座自身使用，模板的供派生项目使用。
+- 根文件 `README.md`、`AGENTS.md`、`CHANGELOG.md`、`.gitignore`、`.gitattributes` 同时存在于本目录与 `templates/root/`：本目录的供基座自身使用，模板的供派生项目使用。
 
 ## 常用命令
 
@@ -19,6 +19,7 @@
 npm run validate                                            # 静态校验 skills/ 与 README 技能表
 npm test                                                    # 全部测试
 node scripts/init-project.mjs ../新项目 --owner <owner> --repo <repo> --author <名>   # 生成新项目
+node scripts/pack.mjs <目标> [--refresh]                      # 打包为 skill-starter 技能仓库（全量 / 只刷新技能目录）
 node scripts/init-skill.mjs <name> --description "当…"       # 从模板生成技能
 node scripts/init-skill.mjs <name> --workflow               # 同时生成 workflows/01 骨架
 node scripts/init-skill.mjs <name> --reference --asset --agent   # 生成参考件、版式、子代理骨架
@@ -39,7 +40,7 @@ node scripts/validate.mjs --json                            # 机器可读结果
 
 ## 模板
 
-`templates/` 共 20 个，清单见 `../框架树.md` 第三节。`init-skill.mjs` 运行时从这里读取 `skill/SKILL.md` 与 `skill/workflow.md`，所以 `templates/` 不能删。
+`templates/` 共 20 个，清单见 `../框架树.md` 第三节。`init-skill.mjs` 运行时读取 `templates/skill/` 与 `templates/eval/` 下的模板，所以 `templates/` 不能删。
 
 ## 派生
 
