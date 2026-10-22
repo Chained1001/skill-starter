@@ -11,6 +11,7 @@
 ### Changed
 
 - 安装地址、Issue 地址、`package.json` 仓库归属与 LICENSE 版权人由临时 git 用户名改为 `Chained1001`
+- 发布到 github.com/Chained1001/skill-starter，tag `v0.2.0`；干净目录 `npx skills add` 安装与落地完整性经测试目录冒烟 r01 验证
 
 ## [0.2.0] - 2026-10-22
 
