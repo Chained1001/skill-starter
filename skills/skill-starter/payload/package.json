@@ -1,0 +1,15 @@
+{
+  "name": "framework-base",
+  "version": "0.2.0",
+  "private": true,
+  "description": "可复制到项目根的 skill 开发基座，含模板、校验器与测试",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "validate": "node scripts/validate.mjs",
+    "test": "node --test --test-isolation=none \"test/*.test.mjs\""
+  }
+}
