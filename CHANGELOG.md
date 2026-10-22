@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-10-22
+
+### Changed
+
+- 随基座 v0.3.2 刷新并补同步仓库根：`npm test` 前置 Node 版本守卫（低版本第一步即中文报错）；生成器写 `.base-version` 版本戳，基座新增 `check-projects.mjs` 可比对派生项目落后情况——首次实跑即暴露本仓库根的规范副本与校验器停在 0.2.1 渲染的真实漂移，本次按同步范围补齐（`docs/规范/`、`validate`、`init-skill`、`templates/`），并补记 `.base-version`。经 check-projects 复核完全同步（退出码 0）
+
 ## [0.3.1] - 2026-10-22
 
 ### Changed

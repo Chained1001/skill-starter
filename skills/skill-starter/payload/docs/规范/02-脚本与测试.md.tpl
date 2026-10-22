@@ -52,8 +52,9 @@
 | `E_WORKFLOW_ORDER` | 流程文件名不是 `NN-名称.md`，或序号不连续、重复 | 按序号重命名 |
 | `E_WORKFLOW_SECTION` | 流程文件缺固定小节 | 补齐五个小节 |
 | `E_EXISTS` | `init-skill`、`init-project`、`pack` 的目标目录已存在且未加 `--force`，或 `pack --refresh` 的目标目录不存在 | 换名或加 `--force`；`--refresh` 换成既有打包产物，从零生成改用全量打包 |
-| `E_TEMPLATE` | `templates/` 或 `--source` 目录缺失、根模板不齐（退出码 3），或打包时版本号、README 待替换行不可读 | 恢复 `templates/` 或 `--source` 目录的模板；打包场景修好基座 `package.json` 版本号与根 README 模板的技能表行后重试 |
+| `E_TEMPLATE` | `templates/` 或 `--source` 目录缺失、根模板不齐（退出码 3），或打包时版本号、README 待替换行不可读，或比对项目时基座版本来源（`package.json` 与 `CHANGELOG.md`）不可读 | 恢复 `templates/` 或 `--source` 目录的模板；打包场景修好基座 `package.json` 版本号与根 README 模板的技能表行后重试；比对场景在完好的基座根目录运行 |
 | `E_HOOK` | `install-hooks` 在非 git 仓库运行，或已有 pre-commit 钩子且未加 `--force` | 先 `git init`，或加 `--force` 覆盖 |
+| `E_SYNC_GAP` | `check-projects` 发现派生项目与基座有差距：`.base-version` 未记录、早于 CHANGELOG 记录或落后若干版，或同步范围内文件内容不同、缺失 | 按 `规范/09` 的同步范围逐项判断后同步：属基座演进的从基座重新复制，属项目内容的保留；未记录版本的重派生或补记 `.base-version` |
 | `E_IO` | 脚本读写文件失败的底层 IO 错误 | 看错误信息定位权限/磁盘后重试 |
 
 ## 脚本清单
@@ -64,6 +65,7 @@
 | `scripts/init-skill.mjs` | 从模板生成技能骨架 | 0、1、2、3 |
 | `scripts/install-hooks.mjs` | 安装 pre-commit 提交前校验钩子 | 0、1、2 |
 | `scripts/init-project.mjs` | 从基座生成新项目（仅基座，派生时删除） | 0、1、2、3 |
+| `scripts/check-projects.mjs` | 只读比对派生项目与基座的版本与同步范围差距（仅基座，派生时删除） | 0、1、2、3 |
 | `scripts/pack.mjs` | 把基座打包为 skill-starter 技能仓库内容，或加 `--refresh` 只重建其技能目录（仅基座，派生时删除） | 0、1、2、3 |
 
 ## 写文件
@@ -75,7 +77,7 @@
 ## 测试
 
 - 框架固定为 `node:test`，断言固定为 `node:assert/strict`。
-- 运行命令固定为 `node --test --test-isolation=none "test/*.test.mjs"`，由 `npm test` 调用。`--test-isolation=none` 让用例在同一进程运行，避免测试运行器自身 spawn 失败。
+- 运行命令固定为守卫与测试两段，由 `npm test` 经 `&&` 串联调用：先 `node -e` 版本守卫（动态读 `package.json` 的 `engines.node`，当前 Node 主版本低于要求时输出中文提示并以退出码 1 拒绝继续，npm 未装 engine-strict 时低版本机器在第一步即得明确提示），后 `node --test --test-isolation=none "test/*.test.mjs"`。`--test-isolation=none` 让用例在同一进程运行，避免测试运行器自身 spawn 失败。
 - 测试只断言可观测输出：返回值、退出码、写入的文件内容、stdout 与 stderr。不断言内部函数是否被调用。
 - 允许条件跳过，写法固定为 `test('名称', { skip: <条件> && '<原因>' }, fn)`。原因写明什么条件下不适用。禁止无条件跳过与永久跳过。
 - 禁止占位断言，如 `assert(true)`。

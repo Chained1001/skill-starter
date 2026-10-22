@@ -63,7 +63,7 @@
 
 - 跟随重新复制：`docs/规范/` 全部、`scripts/validate.mjs`、`scripts/init-skill.mjs`、`templates/` 全部、`.gitattributes` 与 `.gitignore`、`ci.yml` 等双份根文件（项目根与 `templates/root/` 各一份，同次改）、`test/version.test.mjs` 等基座演进新增的仓库级测试。
 - 永不回灌：`skills/`、`evals/`、`docs/产品/`、`docs/技术/`，以及根 `README.md`、`AGENTS.md`、`CHANGELOG.md` 的项目内容。
-- 核对方法：与基座同名文件逐一 `diff`，内容不同的逐份判断——属基座演进的重新复制，属项目内容的保留。
+- 核对方法：优先在基座运行 `node scripts/check-projects.mjs <项目路径>`——它读项目根 `.base-version` 报告落后几版（未记录、早于基座 CHANGELOG 记录均计差距），并按下述固定清单逐文件比对：`docs/规范/*.md`、`scripts/validate.mjs`、`scripts/init-skill.mjs`、`templates/` 全部、`test/version.test.mjs`、`.gitignore`、`.gitattributes`、`.github/workflows/ci.yml`，内容不同或项目缺失都会列出；退出码 0 即范围内完全同步。「等基座演进新增的仓库级测试」里清单之外的新测试仍靠手工判断。脚本不可用时后退为全手工：与基座同名文件逐一 `diff`，内容不同的逐份判断——属基座演进的重新复制，属项目内容的保留。
 - 理由：基座只演进规范、模板、脚本与门禁，项目的技能与文档是项目自己的产出，两者不混。
 
 ## 不回灌的内容

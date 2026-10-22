@@ -15,7 +15,7 @@ const USAGE = '用法：init-project.mjs <目标目录> [--name <包名>] [--own
 const NAME_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 
 // 只在基座成立的路径（相对基座根，正斜杠；pack.mjs 复用此清单）：VCS 与依赖目录、
-// 示例、示例测试、评测示例、生成器与打包器及其测试。单一来源，改这里须同次跑 pack 测试。
+// 示例、示例测试、评测示例、生成器、打包器与差距比对器及其测试。单一来源，改这里须同次跑 pack 测试。
 export const DROP = [
   '.git',
   'node_modules',
@@ -23,10 +23,12 @@ export const DROP = [
   'evals',
   'scripts/init-project.mjs',
   'scripts/pack.mjs',
+  'scripts/check-projects.mjs',
   'test/base-only.test.mjs',
   'test/examples.test.mjs',
   'test/init-project.test.mjs',
   'test/pack.test.mjs',
+  'test/check-projects.test.mjs',
 ]
 
 // 根文件：模板名 → 项目内名字。
@@ -170,6 +172,7 @@ export async function initProject({ target, name, owner = 'TODO-owner', repo = '
     `复制 ${sourceDir} 到 ${target}`,
     ...DROP.map((p) => `删除 ${p}`),
     ...ROOT_FILES.map(([, to]) => `写入 ${to}`),
+    ...(baseVersion !== undefined ? [`写入 .base-version（源版本 ${baseVersion}）`] : []),
     ...tplFiles.map((rel) => `还原 ${rel} 为 ${rel.slice(0, -'.tpl'.length)}`),
   ]
   if (dryRun) return { action: 'dry-run', target, name: projectName, baseVersion, planned }
@@ -196,6 +199,12 @@ export async function initProject({ target, name, owner = 'TODO-owner', repo = '
     const dest = join(target, to)
     await mkdir(dirname(dest), { recursive: true })
     await writeFile(dest, render(template, { name: projectName, owner, repo }), 'utf8')
+  }
+
+  // 版本戳：把源版本写进目标根 .base-version（单行版本号加换行），基座的 check-projects.mjs 靠它算派生项目落后几版。
+  // 与「基座版本」输出行同策略：读不到源版本（自备 --source 无 package.json）时省略此文件，不算失败。
+  if (baseVersion !== undefined) {
+    await writeFile(join(target, '.base-version'), `${baseVersion}\n`, 'utf8')
   }
 
   const license = join(target, 'LICENSE')
