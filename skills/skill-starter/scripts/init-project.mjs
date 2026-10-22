@@ -31,18 +31,20 @@ const ROOT_FILES = [
   ['CHANGELOG.md', 'CHANGELOG.md'],
   ['package.json', 'package.json'],
   ['gitignore', '.gitignore'],
+  ['gitattributes', '.gitattributes'],
   ['ci.yml', join('.github', 'workflows', 'ci.yml')],
 ]
 
-// 源目录必须齐备的根模板：templates/root/ 下的七个文件（渲染用的六个之外还有 GLOSSARY.md）。
-const REQUIRED_ROOT_TEMPLATES = ['README.md', 'AGENTS.md', 'CHANGELOG.md', 'GLOSSARY.md', 'package.json', 'gitignore', 'ci.yml']
+// 源目录必须齐备的根模板：templates/root/ 下的八个文件（渲染用的七个之外还有 GLOSSARY.md）。
+const REQUIRED_ROOT_TEMPLATES = ['README.md', 'AGENTS.md', 'CHANGELOG.md', 'GLOSSARY.md', 'package.json', 'gitignore', 'gitattributes', 'ci.yml']
 
 export class UsageError extends Error {}
 export class TemplateError extends Error {}
 export class ExistsError extends Error {}
 
+// 生成物行尾统一 LF：源模板可能来自 autocrlf 克隆（CRLF），下游按 \n 解析。
 function render(text, { name, owner, repo }) {
-  return text
+  return text.replaceAll('\r\n', '\n')
     .replaceAll('{{项目名}}', () => name)
     .replaceAll('{{owner}}', () => owner)
     .replaceAll('{{repo}}', () => repo)
@@ -126,7 +128,7 @@ export async function initProject({ target, name, owner = 'TODO-owner', repo = '
     if (!names.some((n) => existsSync(join(rootTemplates, n)))) {
       const fix = source === undefined
         ? '请确认基座的 templates/root/ 未被删除'
-        : '请确认 --source 目录包含 templates/root/ 全部七个根模板（README、AGENTS、CHANGELOG、GLOSSARY、package.json、gitignore、ci.yml，Markdown 模板可为 .md.tpl 形态）'
+        : '请确认 --source 目录包含 templates/root/ 全部八个根模板（README、AGENTS、CHANGELOG、GLOSSARY、package.json、gitignore、gitattributes、ci.yml，Markdown 模板可为 .md.tpl 形态）'
       throw new TemplateError(`模板缺失：${join(rootTemplates, from)}。${fix}`)
     }
   }

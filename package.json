@@ -1,6 +1,6 @@
 {
   "name": "skill-starter",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "发布 skill-starter 技能：用随技能携带的基座内容生成新的 skill 开发项目，规范、模板与校验门禁一次到位",
   "license": "MIT",

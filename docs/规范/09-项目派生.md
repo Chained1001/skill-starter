@@ -14,7 +14,7 @@
 
 1. 复制 `辅助内容/开发框架/基座/` 的全部内容到新项目根目录。`templates/` 必须保留，`scripts/init-skill.mjs` 运行时读取它；它是上游 `开发框架/模板/` 的副本，派生后不再与上游同步，项目内可自行增删。
 2. 删除 `evals/cases/` 下的示例用例、`examples/` 目录、`test/base-only.test.mjs`（它读上游的 `框架树.md`，在项目里不成立）、`test/examples.test.mjs`（它检查只存在于基座的示例）、`scripts/init-project.mjs` 与 `test/init-project.test.mjs`（生成器只在基座用）。保留 `skills/.gitkeep`，直到建出第一个技能：git 不跟踪空目录，删掉它会让新克隆缺少 `skills/`，`validate` 报 `E_NO_SKILLS_DIR`。
-3. 用 `templates/root/` 的文件替换根文件：`README.md`、`AGENTS.md`、`CHANGELOG.md`、`package.json`、`.gitignore`（源文件名为 `gitignore`）、`.github/workflows/ci.yml`，同时把 `{{项目名}}`、`{{owner}}`、`{{repo}}` 换成实际值。`LICENSE` 保留，只改版权人。
+3. 用 `templates/root/` 的文件替换根文件：`README.md`、`AGENTS.md`、`CHANGELOG.md`、`package.json`、`.gitignore`（源文件名为 `gitignore`）、`.gitattributes`（源文件名为 `gitattributes`）、`.github/workflows/ci.yml`，同时把 `{{项目名}}`、`{{owner}}`、`{{repo}}` 换成实际值。`LICENSE` 保留，只改版权人。
 4. 改 `package.json` 的 `name`，与仓库目录名一致；`version` 从 `0.1.0` 起。
 5. 按需建 `docs/产品/`（模板 `templates/doc/PRD.md`）与 `docs/技术/`（模板 `templates/doc/技术文档.md`）。
 6. 补全根文件中的 TODO，删掉不适用的行。根文件里不得留 TODO 或 `{{`。

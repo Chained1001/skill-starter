@@ -4,7 +4,7 @@ import { existsSync } from 'node:fs'
 import { mkdir, readFile, rm, rmdir } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { initSkill } from '../scripts/init-skill.mjs'
+import { initSkill, renderSkill } from '../scripts/init-skill.mjs'
 import { validateRepo } from '../scripts/validate.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -43,9 +43,20 @@ test('补全后的技能通过校验', async () => {
     await initSkill({ root, name: 'done-skill', description: '当需要摘要文本时使用。' })
     const file = join(root, 'skills', 'done-skill', 'SKILL.md')
     const { writeFile } = await import('node:fs/promises')
-    const head = (await readFile(file, 'utf8')).split('---\n')[1]
+    const head = (await readFile(file, 'utf8')).replaceAll('\r\n', '\n').split('---\n')[1]
     await writeFile(file, `---\n${head}---\n${body}`, 'utf8')
     assert.deepEqual(await validateRepo(root), [])
+  })
+})
+
+test('CRLF 模板渲染为 LF：autocrlf 克隆的 payload 不产生 CRLF 技能文件', async () => {
+  await withSandbox(async (root) => {
+    const crlfTemplate = '---\r\nname: {{name}}\r\ndescription: {{description}}\r\n---\r\n\r\n# {{name}}\r\n'
+    const rendered = renderSkill(crlfTemplate, { name: 'crlf-skill', description: '当需要测试行尾时使用。' })
+    assert.equal(rendered.includes('\r\n'), false, '渲染结果不得含 CRLF')
+    await initSkill({ root, name: 'crlf-skill', description: '当需要测试行尾时使用。' })
+    const text = await readFile(join(root, 'skills', 'crlf-skill', 'SKILL.md'), 'utf8')
+    assert.equal(text.includes('\r'), false, '生成文件不得含 CR')
   })
 })
 

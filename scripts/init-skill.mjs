@@ -33,8 +33,11 @@ function yamlValue(text) {
   return needsQuote ? `"${flat.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"` : flat
 }
 
+// 生成物行尾统一 LF：模板可能来自 autocrlf 克隆（CRLF），下游按 \n 解析。
+const lf = (text) => text.replaceAll('\r\n', '\n')
+
 export function renderSkill(template, { name, description }) {
-  return template
+  return lf(template)
     .replaceAll('{{name}}', () => name)
     .replaceAll('{{description}}', () => yamlValue(description ?? DEFAULT_DESCRIPTION))
 }
@@ -51,7 +54,7 @@ function nextWorkflowIndex(dir) {
 }
 
 export function renderWorkflow(template, { name, seq = '01' }) {
-  return template
+  return lf(template)
     .replaceAll('{{序号}}', () => seq)
     .replaceAll('{{步骤组名}}', () => 'TODO')
     .replaceAll('{{name}}', () => name)
@@ -59,7 +62,7 @@ export function renderWorkflow(template, { name, seq = '01' }) {
 
 // 参考件、版式、子代理、评测用例共用 {{title}}；评测用例还要把被测技能填成实际路径。
 export function renderTitled(template, { title }) {
-  return template.replaceAll('{{title}}', () => title)
+  return lf(template).replaceAll('{{title}}', () => title)
 }
 
 function renderEval(template, { name }) {

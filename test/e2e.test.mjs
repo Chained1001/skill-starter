@@ -56,13 +56,15 @@ e2eTest('安装模拟：宿主复制件从 payload 生成项目，退出码 0，
   for (const kw of ['接下来', 'init-skill', 'git init', 'install-hooks', 'npm run validate && npm test']) {
     assert.ok(r.stdout.includes(kw), `stdout 缺下一步指引关键词「${kw}」`)
   }
-  // 基座版本号 0.2.0：生成器 stdout 本身不带版本号，按 SKILL.md「输出」小节，版本号由技能声明的
-  // metadata.base-version 报告给用户；断言声明存在且与 payload 的版本一致，报告才有据可依。
+  // 基座版本号：生成器 stdout 本身不带版本号，按 SKILL.md「输出」小节，版本号由技能声明的
+  // metadata.base-version 报告给用户；断言声明存在且与 payload 及本仓库的版本一致，报告才有据可依。
   const skillText = await readFile(join(hosted, 'SKILL.md'), 'utf8')
   const declared = /^  base-version: (\S+)$/m.exec(skillText)?.[1]
-  assert.equal(declared, '0.2.0', 'SKILL.md 声明的基座版本号应为 0.2.0')
   const payloadVersion = JSON.parse(await readFile(join(hosted, 'payload', 'package.json'), 'utf8')).version
+  const repoVersion = JSON.parse(await readFile(join(repo, 'package.json'), 'utf8')).version
+  assert.ok(declared, 'SKILL.md 缺 metadata.base-version')
   assert.equal(payloadVersion, declared, 'payload 的版本号与 SKILL.md 的 base-version 不一致')
+  assert.equal(repoVersion, declared, '本仓库版本号与 SKILL.md 的 base-version 不一致')
 })
 
 e2eTest('生成的项目：npm run validate 与 npm test 退出码 0，且无 .md.tpl 残留', async () => {

@@ -2,12 +2,12 @@
 name: skill-starter
 description: 当需要在当前环境新建一个带规范、模板与校验门禁的 skill 开发项目时使用，不用于编写单个技能的内容。
 metadata:
-  base-version: 0.2.0
+  base-version: 0.2.1
 ---
 
 # skill-starter
 
-把随技能携带的基座内容（本目录 payload/）生成为一个可直接开工的 skill 开发项目：目录骨架、开发规范、模板、校验器与测试一次到位。所基于的基座版本是 0.2.0。
+把随技能携带的基座内容（本目录 payload/）生成为一个可直接开工的 skill 开发项目：目录骨架、开发规范、模板、校验器与测试一次到位。所基于的基座版本是 0.2.1。
 
 ## 输入
 
@@ -39,7 +39,7 @@ metadata:
 
 ## 输出
 
-- 生成路径、项目名、所用基座版本号（0.2.0）。
+- 生成路径、项目名、所用基座版本号（0.2.1）。
 - 五条下一步指引，逐条告知用户，均在新项目根目录执行：
   1. 补全根文件 README、AGENTS、CHANGELOG、package.json 里的占位内容
   2. node scripts/init-skill.mjs <技能名> 生成第一个技能

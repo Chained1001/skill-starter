@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-22
+
+### Fixed
+
+- 修复发布后克隆链路的 CRLF 缺陷（测试目录 skill-starter r02 发现）：Windows `autocrlf` 克隆把 payload 模板检出为 CRLF，`init-skill` 原样渲染导致下游按 `\n` 解析的测试报 `E_FRONTMATTER`。三层修复：`init-skill` 与 `init-project` 渲染时统一归一化 LF；测试解析改用 `\r?\n` 并补 CRLF 回归用例；新增 `.gitattributes` 根模板（`* text=auto eol=lf`），框架仓、基座、派生项目与打包产物全部携带，任何平台克隆均 LF
+
 ## [0.2.0] - 2026-10-22
 
 ### Added

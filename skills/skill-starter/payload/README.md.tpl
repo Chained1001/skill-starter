@@ -39,7 +39,7 @@ node scripts/validate.mjs --json                            # 机器可读结果
 
 ## 模板
 
-`templates/` 共 19 个，清单见 `../框架树.md` 第三节。`init-skill.mjs` 运行时从这里读取 `skill/SKILL.md` 与 `skill/workflow.md`，所以 `templates/` 不能删。
+`templates/` 共 20 个，清单见 `../框架树.md` 第三节。`init-skill.mjs` 运行时从这里读取 `skill/SKILL.md` 与 `skill/workflow.md`，所以 `templates/` 不能删。
 
 ## 派生
 
