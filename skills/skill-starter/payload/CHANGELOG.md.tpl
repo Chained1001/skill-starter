@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- `pack.mjs` 新增 `--refresh` 刷新模式：只删除并重建 `<目标>/skills/skill-starter/`（SKILL.md、生成器、payload），不调用 `initProject`、不跑任何还原步骤——全量模式复用 `initProject`，其 `.md.tpl` 还原会扫整个目标树，把既有 payload 的 `.tpl` 改回 `.md`，新旧混杂（v0.2.1 发布 skill-starter 仓库时实际踩中，被迫清空重打包绕行）；刷新不动根文件、`test/`、`evals/` 与 `package.json` 的 version，版本跟进由人把仓库 version 与 CHANGELOG 对齐到基座版本（仓库 e2e 的三处版本一致断言强制）。技能组装抽为全量与刷新共用的 `assembleSkill`；`test/pack.test.mjs` 补刷新测试（保留仓库自有序且产物与全量一致、预置旧 payload 不腐蚀、目标不存在退出码 1、`--dry-run` 不落盘、`--help` 含 `--refresh`）；`规范/02` 脚本清单 pack 行补「或刷新」
+
 ## [0.2.1] - 2026-10-22
 
 ### Fixed

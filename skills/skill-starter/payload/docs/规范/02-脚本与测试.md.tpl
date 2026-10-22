@@ -63,7 +63,7 @@
 | `scripts/init-skill.mjs` | 从模板生成技能骨架 | 0、1、2、3 |
 | `scripts/install-hooks.mjs` | 安装 pre-commit 提交前校验钩子 | 0、1、2 |
 | `scripts/init-project.mjs` | 从基座生成新项目（仅基座，派生时删除） | 0、1、2、3 |
-| `scripts/pack.mjs` | 把基座打包为 skill-starter 技能仓库内容（仅基座，派生时删除） | 0、1、2、3 |
+| `scripts/pack.mjs` | 把基座打包为 skill-starter 技能仓库内容，或加 `--refresh` 只重建其技能目录（仅基座，派生时删除） | 0、1、2、3 |
 
 ## 写文件
 
