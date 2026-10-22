@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-10-23
+
+### Changed
+
+- 随基座 v0.3.3 刷新：code-review 修复入 payload——生成器与比对脚本的错误类统一为同一份（instanceof 跨模块可靠）、`.base-version` 文件名单一常量来源、同步范围补 `install-hooks.mjs`；仓库根 `install-hooks.mjs` 与规范 09 同步。check-projects 复核：版本一致、38 文件逐字一致（退出码 0）
+
 ## [0.3.2] - 2026-10-22
 
 ### Changed
