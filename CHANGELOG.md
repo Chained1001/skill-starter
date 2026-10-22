@@ -8,6 +8,10 @@
 
 - 补质量闭环：e2e 测试模拟技能安装到宿主后从 payload 生成项目（门禁全过、冲突保护、输出指引），触发用例 `trig-starter`（应触发与不应触发各一条判据）
 
+### Changed
+
+- 安装地址、Issue 地址、`package.json` 仓库归属与 LICENSE 版权人由临时 git 用户名改为 `Chained1001`
+
 ## [0.2.0] - 2026-10-22
 
 ### Added

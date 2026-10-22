@@ -7,7 +7,7 @@
 ## 安装
 
 ```bash
-npx skills add zhanghui/skill-starter
+npx skills add Chained1001/skill-starter
 ```
 
 前置条件：Node.js 24 及以上。
@@ -40,7 +40,7 @@ npx skills add zhanghui/skill-starter
 
 ## 反馈
 
-通过 GitHub Issue：https://github.com/zhanghui/skill-starter/issues
+通过 GitHub Issue：https://github.com/Chained1001/skill-starter/issues
 
 ## 维护者
 
