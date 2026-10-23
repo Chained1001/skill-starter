@@ -33,6 +33,7 @@ function unquote(value) {
 }
 
 export function parseFrontmatter(text) {
+  text = text.replace(/^\uFEFF/, '') // 容 UTF-8 BOM（评审 P14）：带 BOM 的 SKILL.md 不应误报缺 frontmatter
   const match = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(text)
   if (!match) return { error: '缺少 frontmatter：文件开头须为 --- 包裹的 YAML 块' }
   const fields = {}
@@ -75,6 +76,7 @@ export function localLinks(body) {
 export function checkSkillText(dirName, text, file = `skills/${dirName}/SKILL.md`) {
   const errors = []
   const fail = (code, message) => errors.push({ code, file, message })
+  text = text.replace(/^﻿/, '') // BOM 统一在入口剥（评审 P14）
   const parsed = parseFrontmatter(text)
   if (parsed.error) {
     fail('E_FRONTMATTER', parsed.error)
@@ -228,9 +230,10 @@ export async function validateRepo(root) {
   // 只认表格行（首列为技能名）：散文顺带提及不算入索引，否则这条检查形同虚设。
   const readme = join(root, 'README.md')
   if (existsSync(readme)) {
-    const readmeText = await readFile(readme, 'utf8')
+    const readmeText = (await readFile(readme, 'utf8')).replace(/^\uFEFF/, '')
     for (const name of skillNames) {
-      if (!new RegExp(`^\\|\\s*${name}\\s*\\|`, 'm').test(readmeText)) {
+      const safeName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      if (!new RegExp(`^\\|\\s*${safeName}\\s*\\|`, 'm').test(readmeText)) {
         errors.push({ code: 'E_INDEX', file: 'README.md', message: `未提及技能 ${name}，请更新技能列表` })
       }
     }
@@ -300,7 +303,11 @@ async function main() {
   try {
     options = parseArgs(process.argv.slice(2))
   } catch (error) {
-    console.error(error.message)
+    if (process.argv.includes('--json')) {
+      console.log(JSON.stringify({ ok: false, errors: [{ code: error.code ?? 'E_ARGS', file: '', message: error.message }], data: {} }, null, 2))
+    } else {
+      console.error(error.message)
+    }
     process.exitCode = 2
     return
   }

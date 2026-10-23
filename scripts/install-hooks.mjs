@@ -39,6 +39,9 @@ function validatePackageDir(packageDir) {
   if (/["`$\\]/.test(packageDir)) {
     throw new UsageError(`--package-dir 不得含 "、\`、$ 或反斜杠，路径分隔请用 /，当前为 "${packageDir}"`)
   }
+  if (/[\x00-\x1f\x7f]/.test(packageDir)) {
+    throw new UsageError('--package-dir 不得含控制字符（含换行），当前值含不可见字符')
+  }
 }
 
 export async function installHooks({ root = '.', packageDir = '', force = false, dryRun = false } = {}) {
@@ -91,7 +94,11 @@ async function main() {
   try {
     options = parseArgs(process.argv.slice(2))
   } catch (error) {
-    console.error(error.message)
+    if (process.argv.includes('--json')) {
+      console.log(JSON.stringify({ ok: false, errors: [{ code: error.code ?? 'E_ARGS', file: '', message: error.message }], data: {} }, null, 2))
+    } else {
+      console.error(error.message)
+    }
     process.exitCode = 2
     return
   }

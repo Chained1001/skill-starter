@@ -30,7 +30,8 @@ export class ExistsError extends Error {}
 function yamlValue(text) {
   const flat = String(text).replace(/\r?\n/g, ' ').trim()
   if (flat === '') return '""'
-  const needsQuote = /: |^[\s'"#>|&*!%@`{[\]?,;]|^- /.test(flat)
+  // 值内任意位置的 # 都可能被 YAML 当注释起点（评审 P12），与行首特殊字符同规则加引号。
+  const needsQuote = /: |#|^[\s'">|&*!%@`{[\]?,;]|^- /.test(flat)
   return needsQuote ? `"${flat.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"` : flat
 }
 
@@ -182,7 +183,11 @@ async function main() {
   try {
     options = parseArgs(process.argv.slice(2))
   } catch (error) {
-    console.error(error.message)
+    if (process.argv.includes('--json')) {
+      console.log(JSON.stringify({ ok: false, errors: [{ code: error.code ?? 'E_ARGS', file: '', message: error.message }], data: {} }, null, 2))
+    } else {
+      console.error(error.message)
+    }
     process.exitCode = 2
     return
   }
