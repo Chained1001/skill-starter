@@ -76,14 +76,22 @@ function renderEval(template, { name }) {
 
 // 读模板：只有「文件不存在」（ENOENT）才算模板缺失；其余错误（权限、被目录占位等）
 // 是底层 IO 问题，原样上抛由 main 统一报 E_IO，不得误标成 E_TEMPLATE。
+// 打包产物里 Markdown 模板一律是 .md.tpl 形态（pack 改名，随技能分发）。原名读不到时读 .tpl 变体：
+// 没有这层回退，payload 自带的测试在随包形态下一律报模板缺失，发布物无法自证是好的。
 async function readTemplate(file) {
   try {
     return await readFile(file, 'utf8')
   } catch (error) {
-    if (error.code === 'ENOENT') {
-      throw new TemplateError(`模板缺失：${error.path ?? file}。请确认 templates/ 未被删除`)
+    if (error.code !== 'ENOENT') throw error
+    if (file.endsWith('.md')) {
+      try {
+        return await readFile(`${file}.tpl`, 'utf8')
+      } catch (fallback) {
+        // 回退也失败时，底层 IO 问题仍按 IO 上抛；两种名字都不存在才判模板缺失。
+        if (fallback.code !== 'ENOENT') throw fallback
+      }
     }
-    throw error
+    throw new TemplateError(`模板缺失：${error.path ?? file}。请确认 templates/ 未被删除`)
   }
 }
 
@@ -128,6 +136,15 @@ export async function initSkill({
   if (withEval) {
     const text = await readTemplate(EVAL_TEMPLATE)
     files.push({ rel: join('evals', 'cases', `${name}.md`), text: renderEval(text, { name }) })
+  }
+
+  // 用例文件不在技能目录里，上面的 exists 挡不住它：不加 --force 时若同名用例已存在，
+  // 手写的断言会被模板静默盖掉。逐文件判，存在即停（--force 才允许覆盖）。
+  if (!force) {
+    const taken = files.filter((f) => existsSync(join(root, f.rel))).map((f) => f.rel)
+    if (taken.length > 0) {
+      throw new ExistsError(`已存在：${taken.join('、')}。加 --force 覆盖，或换一个名字`)
+    }
   }
 
   if (dryRun) return { action: 'dry-run', path: relFile, files: files.map((f) => f.rel), overwrite: exists }
@@ -178,17 +195,25 @@ function requireValue(argv, index, flag) {
   return argv[index]
 }
 
+// 错误出口唯一化：--json 时一律输出 {ok:false, errors:[{code,message}], data:{}}，否则写 stderr。
+// 用法错误（UsageError）与业务错误必须走同一出口，只差退出码；漏掉一处，调用方在「参数错」
+// 与「业务错」上就会拿到两种格式，无法统一解析。
+function reportError(error, { json, code, exitCode }) {
+  if (json) {
+    console.log(JSON.stringify({ ok: false, errors: [{ code, file: '', message: error.message }], data: {} }, null, 2))
+  } else {
+    console.error(error.message)
+  }
+  process.exitCode = exitCode
+}
+
 async function main() {
   let options
   try {
     options = parseArgs(process.argv.slice(2))
   } catch (error) {
-    if (process.argv.includes('--json')) {
-      console.log(JSON.stringify({ ok: false, errors: [{ code: error.code ?? 'E_ARGS', file: '', message: error.message }], data: {} }, null, 2))
-    } else {
-      console.error(error.message)
-    }
-    process.exitCode = 2
+    // parseArgs 抛错时 options 还不存在，只能从 argv 里找 --json。
+    reportError(error, { json: process.argv.includes('--json'), code: 'E_ARGS', exitCode: 2 })
     return
   }
   if (options.help) {
@@ -220,18 +245,12 @@ async function main() {
     }
   } catch (error) {
     if (error instanceof UsageError) {
-      console.error(error.message)
-      process.exitCode = 2
+      reportError(error, { json: options.json, code: 'E_ARGS', exitCode: 2 })
       return
     }
     // 未知错误（如 EACCES/ENOTDIR 等底层 IO 失败）不再误标 E_EXISTS，统一报 E_IO。
     const code = error instanceof TemplateError ? 'E_TEMPLATE' : error instanceof ExistsError ? 'E_EXISTS' : 'E_IO'
-    if (options.json) {
-      console.log(JSON.stringify({ ok: false, errors: [{ code, message: error.message }], data: {} }, null, 2))
-    } else {
-      console.error(error.message)
-    }
-    process.exitCode = error instanceof TemplateError ? 3 : 1
+    reportError(error, { json: options.json, code, exitCode: error instanceof TemplateError ? 3 : 1 })
   }
 }
 

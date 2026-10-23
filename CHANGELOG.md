@@ -4,6 +4,37 @@
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-10-24
+
+### Added
+
+- `test/sync.test.mjs`：把「本仓库 → payload」这条副本链变成可执行断言。逐段声明 `docs/规范/`、`templates/`、`scripts/`、`test/` 必须与 payload 逐字相等（Markdown 差 `.tpl` 后缀，`test/fixtures/` 同样），并检查 payload 里没有未声明的新增内容。此前这条链完全没有检查：给 `test/evals.test.mjs` 加一行，`npm test` 仍 87 项全绿。已验证它能抓单侧改动
+- 该检查器的注释写明它只守三段中的一段：上游 → 基座 由基座的 `standards`/`templates` 测试守，payload → 派生项目 由基座的 `pack`/`check-projects` 守，两段的上游不在本仓库
+- `test/init-project.test.mjs` 补三条 CLI 用例：`--dry-run` 的计划文本与「不落盘」、`--json` 下参数错与业务错的结构同构（只差退出码与 `code`）、`--help` 打印用法。生成器随技能交付，宿主调的就是这层壳，此前它零断言
+
+### Fixed
+
+- 随基座 v0.5.1 刷新：`init-skill` 在模板为 `.md.tpl` 形态时不再一律报「模板缺失」（payload 自带的测试此前 76 项 28 失败，发布物无法自证）；`init-skill.test.mjs` 不再每次运行都在工作树里留下临时目录；`validate` 的 `checkWorkflowFiles`、`checkWorkflowText`、`localLinks`、`parseFrontmatter` 四个导出补上直接测试
+- `test/e2e.test.mjs` 的共享可变 `project` 改为显式的 `demoProject()` 依赖：此前三条测试靠模块级 `let` 传递产物，单独跑第二条会拿到 `undefined`，测试顺序成了隐含契约。现在每条都能独立运行，生成器仍只 spawn 一次
+- 仓库根 `.base-version` 停在 0.4.0 而代码已是 0.5.1：基座 `check-projects.mjs` 据此报「落后 2 版」并退出码 1，而同步范围内 38 个文件逐字一致。该文件既不在 `DROP` 也不在 `ROOT_FILES`，`pack --refresh` 不写它，只能人工跟版本，于是必然过期。已更新为 0.5.1 并加测试锁住——陈旧的值比没有值更坏，它看起来有权威
+
+## [0.5.0] - 2026-10-23
+
+### Changed
+
+- **BREAKING:** 随基座 v0.5.0 刷新：`init-project --force` 不再删除目标目录里的任何内容，只做「同名文件按源覆盖」。此前会连带删掉目标里用户的 `.git`（提交历史）、`node_modules` 与 `evals/`（手写用例）
+- 随基座 v0.5.0 刷新：`init-skill --eval` 遇同名用例不再静默覆盖；`install-hooks` 识别 `core.hooksPath`；`init-project` 拒绝含引号、反斜杠、换行的 `--owner`/`--repo`
+
+### Added
+
+- 本仓库新增 `test/init-project.test.mjs`：直接覆盖生成器的 `--force` 非破坏、二次 `--force`、`--author` 注入、`--owner`/`--repo` 取值拒绝、自拷贝守卫等 8 条用例。此前生成器只有 e2e 的 3 条用例、16 处断言兜着
+- `test/e2e.test.mjs` 补两条断言：六条下一步指引逐条出现（原注释写「五条」且只验 5 个关键词）、生成项目根的 `.base-version` 与 SKILL.md 的 `base-version` 一致
+
+### Fixed
+
+- 本仓库 `test/` 与基座测试的漂移补齐：`cli`、`init-skill`、`install-hooks`、`validate`、`evals` 五个测试文件与 `test/fixtures/invalid/outside-link/` 同步到基座版本（此前缺少 `E_IO` 归类、`E_COMPATIBILITY` 边界、`--package-dir` 取值拒绝、流程序号 99 上限等 14 条用例，`npm test` 却仍是绿的）
+- 本仓库 `package.json` 的 `test` 补 Node ≥24 守卫，与 `templates/root/package.json` 及 payload 三处一致
+
 ## [0.4.0] - 2026-10-23
 
 ### Changed

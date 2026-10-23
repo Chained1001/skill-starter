@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { rm, rmdir } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { checkSkillText, parseArgs, validateRepo } from '../scripts/validate.mjs'
+import { checkSkillText, checkWorkflowFiles, checkWorkflowText, localLinks, parseArgs, parseFrontmatter, validateRepo } from '../scripts/validate.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
 
@@ -217,6 +217,46 @@ test('流程文件名含 TODO 报 E_PLACEHOLDER，内容不含 TODO 时不误报
   } finally {
     await rm(root, { recursive: true, force: true })
   }
+})
+
+// 以下四条直接调纯函数，不经磁盘：上面那四条集成测试验的是「validateRepo 把它们串起来」，
+// 这里验的是规则本身。规则是纯函数，字面量输入就够，造树只在验串联时才必要。
+const FULL_WORKFLOW = '## 目的\n\nx\n\n## 输入\n\nx\n\n## 步骤\n\nx\n\n## 产出\n\nx\n\n## 停止条件\n\nx\n'
+
+test('checkWorkflowFiles：文件名规则与序号连续性只看名字，不必造树', () => {
+  assert.deepEqual(checkWorkflowFiles(['01-抽取.md', '02-校对.md']), [], '连续序号应无错')
+  assert.deepEqual(codes(checkWorkflowFiles(['01-抽取.md', '03-校对.md'])), ['E_WORKFLOW_ORDER'], '跳号应报')
+  assert.deepEqual(codes(checkWorkflowFiles(['01-抽取.md', '01-校对.md'])), ['E_WORKFLOW_ORDER'], '重号应报')
+  assert.deepEqual(codes(checkWorkflowFiles(['抽取.md'])), ['E_WORKFLOW_ORDER'], '缺序号应报')
+  assert.deepEqual(codes(checkWorkflowFiles(['01-TODO.md'])), ['E_PLACEHOLDER'], '骨架名未改应报')
+  assert.deepEqual(checkWorkflowFiles(['notes.txt']), [], '非 .md 不参与编号')
+})
+
+test('checkWorkflowText：固定小节缺哪个报哪个，全在则无错', () => {
+  assert.deepEqual(checkWorkflowText(FULL_WORKFLOW, 'w/01.md'), [])
+  const missing = codes(checkWorkflowText('# 只有标题\n\n## 目的\n\nx\n', 'w/01.md'))
+  assert.deepEqual(missing, Array(4).fill('E_WORKFLOW_SECTION'), '缺四个小节应报四条')
+  assert.equal(checkWorkflowText('# x\n', 'w/01.md').length, 5, '什么都不含应报满五条')
+})
+
+test('localLinks：只取相对链接，跳过外链与纯锚点', () => {
+  const body = [
+    '[相对](./guide.md)',
+    '[外链](https://example.com/a.md)',
+    '[锚点](#小节)',
+    '[上层](../other.md)',
+    '[邮件](mailto:a@b.c)',
+  ].join('\n')
+  assert.deepEqual(localLinks(body).sort(), ['./guide.md', '../other.md'].sort())
+})
+
+test('parseFrontmatter：分出字段与正文；无 frontmatter 时返回 error 而非伪造空字段', () => {
+  const withFm = parseFrontmatter(skill(OK, '# 正文\n内容\n'))
+  assert.equal(withFm.fields.name, 'sample')
+  assert.match(withFm.body, /# 正文/)
+  const bare = parseFrontmatter('# 没有 frontmatter\n')
+  assert.ok(bare.error, '无 frontmatter 应返回 error')
+  assert.ok(!bare.fields, '不得伪造空字段')
 })
 
 after(async () => {

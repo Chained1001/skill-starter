@@ -3,7 +3,7 @@
 // 用法：init-project.mjs <目标目录> [--name <包名>] [--owner <owner>] [--repo <repo>] [--author <名>] [--source <目录>] [--dry-run] [--force] [--json] [--help]
 // 退出码：0 成功，1 业务失败（目标已存在），2 参数错误，3 模板缺失。
 import { existsSync } from 'node:fs'
-import { cp, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { cp, mkdir, readdir, readFile, rename, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
@@ -13,6 +13,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 const SOURCE = resolve(fileURLToPath(new URL('..', import.meta.url)))
 const USAGE = '用法：init-project.mjs <目标目录> [--name <包名>] [--owner <owner>] [--repo <repo>] [--author <名>] [--source <目录>] [--dry-run] [--force] [--json] [--help]'
 const NAME_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
+// owner/repo 会插进 package.json 的 url 与根 README 的表格：含引号会写出非法 JSON，含反斜杠会造出
+// 非法转义，含换行与竖线会撕开 README 的表格行。GitHub 的 owner/repo 本就只允许这几种字符，按此收紧。
+const OWNER_REPO_PATTERN = /^[A-Za-z0-9._-]+$/
 
 // 只在基座成立的路径（相对基座根，正斜杠；pack.mjs 复用此清单）：VCS 与依赖目录、
 // 示例、示例测试、评测示例、生成器、打包器与差距比对器及其测试。单一来源，改这里须同次跑 pack 测试。
@@ -103,14 +106,12 @@ async function walkFiles(dir, prefix = '') {
 }
 
 // 把生成目录里以 .md.tpl 结尾的文件重命名为去掉 .tpl 的 .md，内容不动。源里没有 .tpl 文件时是空操作。
+// 目标里已有同名 .md 时直接覆盖：--force 重跑已生成过的项目必然命中（上一轮还原出的 .md 还在），
+// 此处若报冲突，等于 --force 在该场景永远失败，且失败时目录已被改了一半。rename 覆盖在 Windows 与 POSIX 上都成立。
 async function restoreMarkdownTemplates(root) {
   for (const rel of await walkFiles(root)) {
     if (!rel.endsWith('.md.tpl')) continue
-    const dest = rel.slice(0, -'.tpl'.length)
-    if (existsSync(join(root, dest))) {
-      throw new TemplateError(`还原 ${rel} 时与已存在的 ${dest} 冲突。源目录不应同时保留同一文件的 .md 与 .md.tpl`)
-    }
-    await rename(join(root, rel), join(root, dest))
+    await rename(join(root, rel), join(root, rel.slice(0, -'.tpl'.length)))
   }
 }
 
@@ -157,6 +158,12 @@ export async function initProject({ target, name, owner = 'TODO-owner', repo = '
     throw new ExistsError(`目标已存在且非空：${target}。换一个目录，或加 --force`)
   }
 
+  for (const [flag, value] of [['--owner', owner], ['--repo', repo]]) {
+    if (!OWNER_REPO_PATTERN.test(value)) {
+      throw new UsageError(`${flag} "${value}" 不合法：只允许英文字母、数字与 . _ -。该值会写进 package.json 的仓库地址与根 README 的表格，含引号、反斜杠或换行会产出非法 JSON 或撕开表格`)
+    }
+  }
+
   const rootTemplates = join(sourceDir, 'templates', 'root')
   for (const from of REQUIRED_ROOT_TEMPLATES) {
     // 打包产物里根 Markdown 模板是 .md.tpl 形态，两种名字都算齐备；生成时先还原再渲染。
@@ -172,8 +179,8 @@ export async function initProject({ target, name, owner = 'TODO-owner', repo = '
   const tplFiles = (await walkFiles(sourceDir)).filter((rel) => rel.endsWith('.md.tpl') && !isDropped(rel))
   const baseVersion = await readSourceVersion(sourceDir)
   const planned = [
-    `复制 ${sourceDir} 到 ${target}`,
-    ...DROP.map((p) => `删除 ${p}`),
+    `复制 ${sourceDir} 到 ${target}${exists ? '（--force：同名文件按源覆盖，目标其余文件保留不删）' : ''}`,
+    ...DROP.map((p) => `跳过 ${p}（只在基座成立，不复制）`),
     ...ROOT_FILES.map(([, to]) => `写入 ${to}`),
     ...(baseVersion !== undefined ? [`写入 .base-version（源版本 ${baseVersion}）`] : []),
     ...tplFiles.map((rel) => `还原 ${rel} 为 ${rel.slice(0, -'.tpl'.length)}`),
@@ -190,8 +197,10 @@ export async function initProject({ target, name, owner = 'TODO-owner', repo = '
     },
   })
 
-  // 后置 rm 兜底：filter 之外再删一遍 DROP（如目标原本就带这些目录的 --force 场景）。
-  for (const p of DROP) await rm(join(target, p), { recursive: true, force: true })
+  // 这里不按 DROP 清单删目标侧的任何东西。DROP 的语义是「源目录里只在基座成立的路径」，
+  // cp 的 filter 已经在复制时把它们挡在门外；再对 target 删一遍会连带删掉目标里本属于用户的
+  // .git（提交历史）、node_modules 与 evals/（手写用例），--force 重跑已生成的项目时尤其致命。
+  // 覆盖语义只到「同名文件按源覆盖」，不扩大到「删掉源里没有的」。
 
   // 先还原 .md.tpl 再渲染根文件：打包产物里 templates/root/ 的 Markdown 模板也是 .tpl 形态，
   // 还原之后 ROOT_FILES 才读得到；本机基座没有 .tpl 文件，此步对它是空操作，先后无影响。
@@ -213,7 +222,9 @@ export async function initProject({ target, name, owner = 'TODO-owner', repo = '
   const license = join(target, 'LICENSE')
   if (author && existsSync(license)) {
     const text = await readFile(license, 'utf8')
-    await writeFile(license, text.replace(/Copyright \(c\) .*/, `Copyright (c) ${new Date().getFullYear()} ${author}`), 'utf8')
+    // 用回调而不是模板串：author 里的 $&、$1 在字符串形式下是替换模式，会插回原版权行，
+    // 写出「Copyright (c) 2026 ACopyright (c) 2026 Chained1001B」这类坏内容且无人能发现。
+    await writeFile(license, text.replace(/Copyright \(c\) .*/, () => `Copyright (c) ${new Date().getFullYear()} ${author}`), 'utf8')
   }
 
   return {
@@ -259,13 +270,25 @@ function requireValue(argv, index, flag) {
   return argv[index]
 }
 
+// 错误出口唯一化：--json 时一律输出 {ok:false, errors:[{code,message}], data:{}}，否则写 stderr。
+// 用法错误（UsageError）与文件路径错误必须走同一出口，只差退出码；漏掉一处，调用方就会在
+// 「参数错」与「业务错」上拿到两种格式，无法统一解析。
+function reportError(error, { json, code, exitCode }) {
+  if (json) {
+    console.log(JSON.stringify({ ok: false, errors: [{ code, message: error.message }], data: {} }, null, 2))
+  } else {
+    console.error(error.message)
+  }
+  process.exitCode = exitCode
+}
+
 async function main() {
   let options
   try {
     options = parseArgs(process.argv.slice(2))
   } catch (error) {
-    console.error(error.message)
-    process.exitCode = 2
+    // parseArgs 抛错时 options 还不存在，只能从 argv 里找 --json。
+    reportError(error, { json: process.argv.includes('--json'), code: 'E_ARGS', exitCode: 2 })
     return
   }
   if (options.help) {
@@ -298,18 +321,12 @@ async function main() {
     }
   } catch (error) {
     if (error instanceof UsageError) {
-      console.error(error.message)
-      process.exitCode = 2
+      reportError(error, { json: options.json, code: 'E_ARGS', exitCode: 2 })
       return
     }
     // 未知错误（如 EACCES/ENOTDIR 等底层 IO 失败）不再误标 E_EXISTS，统一报 E_IO。
     const code = error instanceof TemplateError ? 'E_TEMPLATE' : error instanceof ExistsError ? 'E_EXISTS' : 'E_IO'
-    if (options.json) {
-      console.log(JSON.stringify({ ok: false, errors: [{ code, message: error.message }], data: {} }, null, 2))
-    } else {
-      console.error(error.message)
-    }
-    process.exitCode = error instanceof TemplateError ? 3 : 1
+    reportError(error, { json: options.json, code, exitCode: error instanceof TemplateError ? 3 : 1 })
   }
 }
 

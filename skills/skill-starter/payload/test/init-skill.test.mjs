@@ -1,9 +1,9 @@
 import { after, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { existsSync } from 'node:fs'
-import { mkdir, readdir, readFile, rm, rmdir, writeFile } from 'node:fs/promises'
+import { cp, mkdir, readdir, readFile, rm, rename, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { UsageError, initSkill, renderSkill } from '../scripts/init-skill.mjs'
 import { validateRepo } from '../scripts/validate.mjs'
 
@@ -188,11 +188,65 @@ test('--all 一次生成全部五类骨架', async () => {
   })
 })
 
-after(async () => {
-  await rm(join(here, '.tmp', 'init-skill'), { recursive: true, force: true })
+// 用例文件不在 skills/<name>/ 下，只看技能目录是否存在挡不住它：不加 --force 而同名用例
+// 已存在时，手写的断言会被模板静默盖掉，且命令退出码 0。
+test('--eval 遇到同名用例时不覆盖：报错退出，手写内容原样保留，--force 才覆盖', async () => {
+  await withSandbox(async (root) => {
+    const file = join(root, 'evals', 'cases', 'handwritten.md')
+    await mkdir(dirname(file), { recursive: true })
+    await writeFile(file, '# 手写用例\n\nC-99 必须保留\n', 'utf8')
+
+    await assert.rejects(
+      () => initSkill({ root, name: 'handwritten', description: '当需要用例时使用。', withEval: true }),
+      (error) => error.message.includes('evals') && error.message.includes('--force'),
+      '同名用例已存在时应拒绝并提示 --force',
+    )
+    assert.match(await readFile(file, 'utf8'), /C-99 必须保留/, '手写用例不得被静默覆盖')
+
+    await initSkill({ root, name: 'handwritten', description: '当需要用例时使用。', withEval: true, force: true })
+    assert.match(await readFile(file, 'utf8'), /^# handwritten 冒烟$/m, '--force 才允许覆盖')
+  })
+})
+
+// 随技能分发的那份 payload 里，Markdown 模板一律被 pack 改名成 .md.tpl。生成器若只认原名，
+// payload 自带的测试在随包形态下会全部报「模板缺失」——发布物无法自证是好的。
+// 这条把「脚本 + .tpl 化模板」整份复制到临时目录后动态 import，在进程内验证回退真的成立。
+test('模板为 .md.tpl 形态时（随包 payload）仍能生成：读取回退到 .tpl 变体', async () => {
+  const sandbox = join(here, '.tmp', 'tpl-fallback')
   try {
-    await rmdir(join(here, '.tmp'))
-  } catch (error) {
-    if (error.code !== 'ENOTEMPTY' && error.code !== 'ENOENT') throw error
+    await cp(join(here, '..', 'scripts'), join(sandbox, 'scripts'), { recursive: true })
+    await cp(join(here, '..', 'templates'), join(sandbox, 'templates'), { recursive: true })
+
+    // 把每个 .md 改名为 .md.tpl，模拟 pack 之后的形态。
+    const asPack = async (dir) => {
+      for (const entry of await readdir(dir, { withFileTypes: true })) {
+        const full = join(dir, entry.name)
+        if (entry.isDirectory()) await asPack(full)
+        else if (entry.name.endsWith('.md')) await rename(full, `${full}.tpl`)
+      }
+    }
+    await asPack(join(sandbox, 'templates'))
+
+    // 动态 import 复制件，让它的 ../templates/ 指向这份 .tpl 化的模板。
+    const mod = await import(`${pathToFileURL(join(sandbox, 'scripts', 'init-skill.mjs')).href}?t=${Date.now()}`)
+    const root = join(sandbox, 'out')
+    await mkdir(join(root, 'skills'), { recursive: true })
+
+    await mod.initSkill({ root, name: 'packed-skill', description: '当模板只有 .tpl 时使用。', withWorkflow: true, withEval: true })
+
+    const text = await readFile(join(root, 'skills', 'packed-skill', 'SKILL.md'), 'utf8')
+    assert.match(text, /^name: packed-skill$/m, '.tpl 变体应被读到并渲染')
+    assert.ok(!text.includes('{{'), '渲染后不应残留占位符')
+    assert.ok(existsSync(join(root, 'skills', 'packed-skill', 'workflows', '01-TODO.md')), '流程骨架也应从 .tpl 变体生成')
+    assert.ok(existsSync(join(root, 'evals', 'cases', 'packed-skill.md')), '用例骨架也应从 .tpl 变体生成')
+  } finally {
+    await rm(sandbox, { recursive: true, force: true })
   }
+})
+
+after(async () => {
+  // 这里只能按「本文件实际建过什么」清，不能按想当然的名字清：
+  // 曾写成 rm(join(here, '.tmp', 'init-skill'))，而 withSandbox 建的是 .tmp/init-<hrtime>，
+  // 名字对不上，每个临时目录都永久留在工作树里。
+  await rm(join(here, '.tmp'), { recursive: true, force: true })
 })

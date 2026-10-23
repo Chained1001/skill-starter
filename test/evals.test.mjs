@@ -45,7 +45,7 @@ test('每个技能至少有一条评测用例', async () => {
   }
   for (const entry of await readdir(skillsDir, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue
-    assert.ok(covered.has(`skills/${entry.name}`), `技能 ${entry.name} 没有评测用例`)
+    assert.ok(covered.has(`skills/${entry.name}`), `技能 ${entry.name} 没有评测用例（覆盖下限：每个技能至少一条用例，类型由人核对）`)
   }
 })
 

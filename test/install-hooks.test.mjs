@@ -2,10 +2,19 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { existsSync, readFileSync } from 'node:fs'
-import { mkdir, mkdtemp, rm } from 'node:fs/promises'
+import { spawnSync } from 'node:child_process'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { HookExistsError, NotGitRepoError, installHooks } from '../scripts/install-hooks.mjs'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { HookExistsError, NotGitRepoError, UsageError, installHooks, parseArgs } from '../scripts/install-hooks.mjs'
+
+const hookScript = join(dirname(fileURLToPath(import.meta.url)), '..', 'scripts', 'install-hooks.mjs')
+
+// 受限沙箱禁止子进程走管道（EPERM）。此时跳过 CLI 测试，并写明恢复条件。
+const probe = spawnSync(process.execPath, ['-e', "process.stdout.write('ok')"], { encoding: 'utf8' })
+const noSpawn = probe.stdout === 'ok' ? {} : { skip: '当前环境禁止子进程管道（EPERM），CLI 测试需在普通终端运行' }
+const cliTest = (name, fn) => test(name, noSpawn, fn)
 
 async function withRepo(run) {
   const root = await mkdtemp(join(tmpdir(), 'hooks-'))
@@ -59,4 +68,97 @@ test('--dry-run 不写文件', async () => {
     assert.equal(result.action, 'dry-run')
     assert.equal(existsSync(join(root, '.git', 'hooks', 'pre-commit')), false)
   })
+})
+
+test('--package-dir 为绝对路径时拒绝', async () => {
+  await withRepo(async (root) => {
+    await assert.rejects(
+      () => installHooks({ root, packageDir: resolve('some', 'pkg') }),
+      (error) => error instanceof UsageError && error.message.includes('相对'),
+    )
+  })
+})
+
+test('--package-dir 含 " ` $ 或反斜杠时拒绝，并提示用 /', async () => {
+  await withRepo(async (root) => {
+    for (const bad of ['a\\b', 'a"b', 'a`b', 'a$b']) {
+      await assert.rejects(
+        () => installHooks({ root, packageDir: bad }),
+        (error) => error instanceof UsageError && error.message.includes('/'),
+        `${bad} 应被拒绝并提示用 /`,
+      )
+    }
+    await installHooks({ root, packageDir: '基座/sub-dir' })
+    assert.match(readFileSync(join(root, '.git', 'hooks', 'pre-commit'), 'utf8'), /cd "\$root\/基座\/sub-dir"/)
+  })
+})
+
+test('第二个位置参数报「多余的参数」而不是静默覆盖 root', () => {
+  const one = parseArgs(['some/repo'])
+  assert.equal(one.root, 'some/repo')
+  assert.throws(() => parseArgs(['a', 'b']), (error) => error instanceof UsageError && error.message.includes('多余的参数'))
+})
+
+cliTest('CLI：--help 退出码 0，未知参数退出码 2，非 git 仓库退出码 1', async () => {
+  const help = spawnSync(process.execPath, [hookScript, '--help'], { encoding: 'utf8' })
+  assert.equal(help.status, 0)
+  assert.match(help.stdout, /用法/)
+
+  assert.equal(spawnSync(process.execPath, [hookScript, '--bogus'], { encoding: 'utf8' }).status, 2)
+
+  const root = await mkdtemp(join(tmpdir(), 'hooks-cli-'))
+  try {
+    const r = spawnSync(process.execPath, [hookScript, root], { encoding: 'utf8' })
+    assert.equal(r.status, 1, `非 git 仓库应退出码 1，实际 ${r.status}：${r.stdout}\n${r.stderr}`)
+    assert.match(r.stderr, /不是 git 仓库/)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+// --json 是给调用方解析的契约：参数错误与业务错误必须是同一种结构，只差退出码。
+cliTest('CLI：--json 下参数错误也输出 E_ARGS（退出码 2）', async () => {
+  for (const args of [['--bogus', '--json'], ['--package-dir', '--json'], ['a', 'b', '--json']]) {
+    const r = spawnSync(process.execPath, [hookScript, ...args], { encoding: 'utf8' })
+    assert.equal(r.status, 2, `参数错应退出码 2（${args.join(' ')}），实际 ${r.status}：${r.stdout}\n${r.stderr}`)
+    const obj = JSON.parse(r.stdout)
+    assert.equal(obj.ok, false, `--json 应输出 ok:false（${args.join(' ')}）`)
+    assert.equal(obj.errors[0].code, 'E_ARGS', `参数错应报 E_ARGS（${args.join(' ')}）`)
+  }
+})
+
+cliTest('CLI：--json 下 --package-dir 取值被拒也输出 E_ARGS（退出码 2）', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'hooks-json-'))
+  try {
+    await mkdir(join(root, '.git', 'hooks'), { recursive: true })
+    const r = spawnSync(process.execPath, [hookScript, root, '--package-dir', 'a\\b', '--json'], { encoding: 'utf8' })
+    assert.equal(r.status, 2, `被拒的取值应退出码 2，实际 ${r.status}：${r.stdout}\n${r.stderr}`)
+    assert.equal(JSON.parse(r.stdout).errors[0].code, 'E_ARGS')
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+// core.hooksPath 一旦设了（husky、lefthook、monorepo 常见），<git dir>/hooks 下的钩子永不执行。
+// 那时仍往 .git/hooks 写并报「已安装」，等于静默失效。
+test('设置了 core.hooksPath 时装到该目录，而不是静默写进 .git/hooks', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'hooks-path-'))
+  try {
+    await mkdir(join(root, '.git', 'hooks'), { recursive: true })
+    await writeFile(join(root, '.git', 'config'), '[core]\n\trepositoryformatversion = 0\n\thooksPath = .husky\n', 'utf8')
+
+    const result = await installHooks({ root })
+    assert.equal(result.path, join(root, '.husky', 'pre-commit'), `钩子应装到 core.hooksPath 指定的 .husky/，实际 ${result.path}`)
+    assert.ok(existsSync(join(root, '.husky', 'pre-commit')))
+    assert.equal(existsSync(join(root, '.git', 'hooks', 'pre-commit')), false, '不得再往永不执行的位置写')
+
+    // 相对路径按仓库根解释；绝对路径原样使用。
+    await rm(join(root, '.git', 'config'))
+    const abs = join(root, 'abs-hooks')
+    await writeFile(join(root, '.git', 'config'), `[core]\n\thooksPath = ${abs}\n`, 'utf8')
+    const second = await installHooks({ root, force: true })
+    assert.equal(second.path, join(abs, 'pre-commit'))
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
 })

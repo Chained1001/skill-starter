@@ -16,7 +16,7 @@
 2. 删除整个 `evals/`（其中只有示例用例与示例测试）、`examples/` 目录、`test/base-only.test.mjs`（它读上游的 `框架树.md`，在项目里不成立）、`test/examples.test.mjs`（它检查只存在于基座的示例）、`scripts/init-project.mjs` 与 `test/init-project.test.mjs`（生成器只在基座用）、`scripts/pack.mjs` 与 `test/pack.test.mjs`（打包器只在基座用）、`scripts/check-projects.mjs` 与 `test/check-projects.test.mjs`（派生项目比对只在基座用）。保留 `skills/.gitkeep`，直到建出第一个技能：git 不跟踪空目录，删掉它会让新克隆缺少 `skills/`，`validate` 报 `E_NO_SKILLS_DIR`。
 3. 用 `templates/root/` 的文件替换根文件：`README.md`、`AGENTS.md`、`CHANGELOG.md`、`package.json`、`.gitignore`（源文件名为 `gitignore`）、`.gitattributes`（源文件名为 `gitattributes`）、`.github/workflows/ci.yml`，同时把 `{{项目名}}`、`{{owner}}`、`{{repo}}` 换成实际值。`LICENSE` 保留，只改版权人。
 4. 改 `package.json` 的 `name`，与仓库目录名一致；`version` 从 `0.1.0` 起。
-5. 按需建 `docs/产品/`（模板 `templates/doc/PRD.md`）与 `docs/技术/`（模板 `templates/doc/技术文档.md`）。
+5. 按需建 `docs/产品/`（模板 `templates/doc/PRD.md`）与 `docs/技术/`（模板 `templates/doc/技术文档.md`）。何时算"需"：满足施工规模的需求先写 PRD、架构或跨技能改动先更新技术文档，见 `docs/规范/10-施工流程.md` 的「需求入口」。
 6. 补全根文件中的 TODO，删掉不适用的行。根文件里不得留 TODO 或 `{{`。
 7. `git init`，随后运行 `node scripts/install-hooks.mjs` 安装 pre-commit 钩子；首次提交用 `chore: 从基座派生`。
 8. 运行 `npm run validate` 与 `npm test`，两者退出码为 0。

@@ -1,6 +1,6 @@
 {
   "name": "skill-starter",
-  "version": "0.4.0",
+  "version": "0.5.1",
   "private": true,
   "description": "发布 skill-starter 技能：用随技能携带的基座内容生成新的 skill 开发项目，规范、模板与校验门禁一次到位",
   "license": "MIT",
@@ -14,6 +14,6 @@
   },
   "scripts": {
     "validate": "node scripts/validate.mjs",
-    "test": "node --test --test-isolation=none \"test/*.test.mjs\""
+    "test": "node -e \"const m=Number(process.versions.node.split('.')[0]);const need=Number((require('./package.json').engines.node.match(/(\\d+)/)||[])[1]);if(need&&m<need){console.error('需要 Node.js '+need+' 及以上，当前 '+process.version+'；请升级后重试');process.exit(1)}\" && node --test --test-isolation=none \"test/*.test.mjs\""
   }
 }
