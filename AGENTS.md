@@ -25,16 +25,19 @@
 | `skills/` | 交付 | 唯一发布内容 |
 | `templates/` | 留存 | 派生后必留，`scripts/init-skill.mjs` 运行时读取 |
 | `docs/规范/` | 留存 | 标准副本，只读；改上游后重新复制 |
+| `docs/agents/` | 开发 | 本仓库的议题跟踪、三角标签与领域文档约定，只服务本仓库 |
 | `scripts/`、`test/`、`evals/` | 开发 | 只服务本仓库 |
 
 性质三档：交付＝随 `npx skills add` 安装；留存＝随仓库保留但不安装；开发＝只服务本仓库。
+
+`docs/规范/`、`templates/`、`scripts/`、`test/` 在本仓库与 `skills/skill-starter/payload/` 各存一份（payload 侧 Markdown 为 `.md.tpl`），必须逐字相等，由 `test/sync.test.mjs` 校验。该检查器只守这一段：上游 → 基座 由基座的 `standards`/`templates` 测试守，payload → 派生项目 由基座的 `pack`/`check-projects` 守。
 
 ## 改动边界
 
 | 位置 | 可否手改 | 改动方式 |
 |---|---|---|
 | `skills/skill-starter/`（技能入口、生成器、payload） | 否，基座生成物 | 改基座源头，后在基座目录运行 `node scripts/pack.mjs <本仓库路径> --refresh` 只重建该目录 |
-| 根文件（`README.md`、`AGENTS.md`、`CHANGELOG.md`、`package.json` 等）、`test/`、`evals/` | 是，本仓库内容 | 直接改 |
+| 根文件（`README.md`、`AGENTS.md`、`CHANGELOG.md`、`package.json` 等）、`test/`、`evals/`、`docs/agents/` | 是，本仓库内容 | 直接改 |
 
 - 刷新只重建 `skills/skill-starter/`，不改本仓库其余任何文件，也不改 `package.json` 的 version。
 - 刷新后由人把 `package.json` 的 version 与 `CHANGELOG.md` 对齐到基座版本：`test/e2e.test.mjs` 断言 SKILL.md、payload 与本仓库三处版本一致，不对齐即测试红。
@@ -51,6 +54,9 @@
 | 当前版本号 | `package.json` 的 `version` |
 | 变更历史 | `CHANGELOG.md` |
 | 规则 | `docs/规范/` |
+| 议题记在哪、怎么读写 | `docs/agents/issue-tracker.md` |
+| 三角标签的角色与标签串对应 | `docs/agents/triage-labels.md` |
+| 领域文档布局与消费规则 | `docs/agents/domain.md` |
 
 两处冲突且判不出哪处是真源时，先裁决再动手，把结果记一行到下表；没有冲突时不建此表。
 
@@ -61,6 +67,7 @@
 | 技能增删或改名 | `README.md` 的「技能列表」节 |
 | `package.json` 的 `version` | `CHANGELOG.md` 的版本段 |
 | 基座内容变动后运行 `node scripts/pack.mjs <本仓库> --refresh` | `package.json` 的 `version`、`CHANGELOG.md` 的版本段（对齐到基座版本） |
+| `docs/规范/`、`templates/`、`scripts/`、`test/` 任一侧改动 | 同次改 `skills/skill-starter/payload/` 的对应件（`npm test` 里的 `sync` 检查会指出漏改的文件） |
 
 ## 验证
 
@@ -75,8 +82,22 @@
 
 ## 禁止事项
 
-- 禁止手改 `skills/skill-starter/` 下的技能入口、生成器与 payload，改为改基座源头后在基座目录运行 `node scripts/pack.mjs <本仓库路径> --refresh` 重建（原因：该目录是基座生成物，手改会在下次刷新时被覆盖）。随基座复制的 `docs/规范/`、`templates/`、`scripts/` 改动须回基座源头再同步，不就地分叉（原因：就地改会与基座漂移，且无检查能发现）。
+- 禁止手改 `skills/skill-starter/` 下的技能入口、生成器与 payload，改为改基座源头后在基座目录运行 `node scripts/pack.mjs <本仓库路径> --refresh` 重建（原因：该目录是基座生成物，手改会在下次刷新时被覆盖）。随基座复制的 `docs/规范/`、`templates/`、`scripts/` 改动须回基座源头再同步，不就地分叉（原因：就地改会与基座漂移；`test/sync.test.mjs` 只能发现本仓库与 payload 不一致，发现不了与基座源头的差异——上游不在本仓库里）。
 - 禁止不先搜索已有 Issue 与 PR 就动手，改为先搜重再实现（原因：重复实现与冲突到审查才暴露）。
 - 禁止 AI 产出的改动未经人过完整 diff 就提交，改为人核后提交（原因：机器门禁查不出语义越权）。
 
 「原因」写可核查的后果，或写会被哪条检查发现，不写「更清晰」「更好维护」。
+
+## Agent skills
+
+### Issue tracker
+
+议题记在 GitHub Issues（`Chained1001/skill-starter`），用 `gh` CLI 读写。见 `docs/agents/issue-tracker.md`。
+
+### Triage labels
+
+沿用五个默认标签：`needs-triage`、`needs-info`、`ready-for-agent`、`ready-for-human`、`wontfix`。见 `docs/agents/triage-labels.md`。
+
+### Domain docs
+
+单上下文：根 `GLOSSARY.md` + `docs/adr/`。见 `docs/agents/domain.md`。

@@ -44,17 +44,28 @@ after(async () => {
   }
 })
 
-let project // 由第一个测试生成，后续断言复用同一产物；npm test 只 spawn 一次
+// 生成一次、三条测试共用：整个文件只 spawn 一次生成器。依赖写在每条测试的第一行（await demoProject()），
+// 不靠模块级 let 传递——那样单独跑其中一条会拿到 undefined，且测试顺序变成隐含契约。
+let projectPromise
+function demoProject() {
+  projectPromise ??= (async () => {
+    const project = join(base, 'demo-project')
+    const r = generate(project)
+    assert.equal(r.status, 0, `生成器退出码 ${r.status}\nstdout:\n${r.stdout}\nstderr:\n${r.stderr}`)
+    return { project, stdout: r.stdout }
+  })()
+  return projectPromise
+}
 
 e2eTest('安装模拟：宿主复制件从 payload 生成项目，退出码 0，stdout 含生成路径与下一步指引', async () => {
-  project = join(base, 'demo-project')
-  const r = generate(project)
-  assert.equal(r.status, 0, `生成器退出码 ${r.status}\nstdout:\n${r.stdout}\nstderr:\n${r.stderr}`)
-  assert.match(r.stdout, /已生成/)
-  assert.ok(r.stdout.includes(project), 'stdout 未含生成路径')
-  // 五条下一步指引（SKILL.md「输出」小节）逐条出现在 stdout。
-  for (const kw of ['接下来', 'init-skill', 'git init', 'install-hooks', 'npm run validate && npm test']) {
-    assert.ok(r.stdout.includes(kw), `stdout 缺下一步指引关键词「${kw}」`)
+  const { project, stdout } = await demoProject()
+  assert.match(stdout, /已生成/)
+  assert.ok(stdout.includes(project), 'stdout 未含生成路径')
+  // 六条下一步指引（SKILL.md「输出」小节）逐条出现在 stdout；漏掉一条，用户就少做一步
+  // （典型的是忘了改 LICENSE 版权行或补根文件的 TODO，两者都没有门禁能发现）。
+  const nextSteps = ['未提供 --author 时', 'LICENSE 的版权行', '补全 README.md', 'init-skill', 'git init', 'install-hooks', 'npm run validate && npm test']
+  for (const kw of nextSteps) {
+    assert.ok(stdout.includes(kw), `stdout 缺下一步指引关键词「${kw}」`)
   }
   // 基座版本号：生成器 stdout 本身不带版本号，按 SKILL.md「输出」小节，版本号由技能声明的
   // metadata.base-version 报告给用户；断言声明存在且与 payload 及本仓库的版本一致，报告才有据可依。
@@ -65,9 +76,23 @@ e2eTest('安装模拟：宿主复制件从 payload 生成项目，退出码 0，
   assert.ok(declared, 'SKILL.md 缺 metadata.base-version')
   assert.equal(payloadVersion, declared, 'payload 的版本号与 SKILL.md 的 base-version 不一致')
   assert.equal(repoVersion, declared, '本仓库版本号与 SKILL.md 的 base-version 不一致')
+  // 生成项目根的 .base-version 是 check-projects 判断派生项目落后几版的唯一依据；
+  // 没写或写错，项目侧不会报错，要等回基座比对时才发现。
+  assert.equal((await readFile(join(project, '.base-version'), 'utf8')).trim(), declared, '生成项目的 .base-version 与 SKILL.md 的 base-version 不一致')
+})
+
+// 本仓库自己也是基座的派生仓库，根 .base-version 记录我们派生自哪一版。
+// pack --refresh 不写它（既不在 DROP 也不在 ROOT_FILES），只能人工跟版本——于是它会悄悄过期：
+// 曾停在 0.4.0 而代码已是 0.5.1，check-projects 据此报「落后 2 版」并退出码 1，
+// 而同步范围内 38 个文件逐字一致。陈旧的值比没有值更坏：它看起来有权威。
+e2eTest('仓库根 .base-version 与当前版本一致（否则 check-projects 会误报落后）', async () => {
+  const declared = /^  base-version: (\S+)$/m.exec(await readFile(join(hosted, 'SKILL.md'), 'utf8'))?.[1]
+  const rootStamped = (await readFile(join(repo, '.base-version'), 'utf8')).trim()
+  assert.equal(rootStamped, declared, `仓库根 .base-version 是 ${rootStamped}，应为 ${declared}。pack --refresh 不会更新它，须人工跟`)
 })
 
 e2eTest('生成的项目：npm run validate 与 npm test 退出码 0，且无 .md.tpl 残留', async () => {
+  const { project } = await demoProject()
   const residue = (await readdir(project, { recursive: true })).filter((f) => f.endsWith('.md.tpl'))
   assert.deepEqual(residue, [], `生成目标仍残留 .md.tpl，还原不完整：${residue.join('、')}`)
   const v = npmRun(['run', 'validate'], project)
