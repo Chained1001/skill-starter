@@ -3,20 +3,25 @@
 // 模拟安装：把 skills/skill-starter 整体复制到临时宿主目录，只用复制件驱动全流程。
 import { after, before, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { cp, mkdir, readdir, readFile, rm, rmdir, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { spawnSync } from 'node:child_process'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { noSpawn } from './sandbox.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const repo = join(here, '..')
-const base = join(here, '.tmp', 'e2e')
-// 宿主把技能装在自己的 skills/ 下，模拟同样的层级。
-const hosted = join(base, 'skills', 'skill-starter')
 
-// 受限沙箱禁止子进程走管道（EPERM）。此时跳过整组 e2e 测试，并写明恢复条件（写法同 cli.test.mjs）。
-const probe = spawnSync(process.execPath, ['-e', "process.stdout.write('ok')"], { encoding: 'utf8' })
-const noSpawn = probe.stdout === 'ok' ? {} : { skip: '当前环境禁止子进程管道（EPERM），e2e 测试需在普通终端运行' }
+// 整组 e2e 共用一棵临时树，根在系统临时目录、名字唯一。
+//
+// 这里曾用仓库内固定路径 test/.tmp/e2e，且在文件末尾 rmdir 整个 test/.tmp —— 而
+// init-skill.test.mjs 的树也在那个父目录下。两个文件同时跑，谁先结束谁把对方的树删掉：
+// 并行实测 e2e 报 EBUSY 或退出码 null。改用 mkdtemp 后各拿各的目录，谁也不碰别人。
+// （本文件的树要跨三条测试存活，故不套 withSandbox 的单回调形态，只借用它的 noSpawn。）
+let base
+let hosted
+
 const e2eTest = (name, fn) => test(name, noSpawn, fn)
 
 // 按 SKILL.md「步骤」小节的约定：在技能目录下运行生成器，--source 指向随技能携带的 payload。
@@ -30,18 +35,14 @@ const generate = (target, extra = []) =>
 const npmRun = (args, cwd) => spawnSync('npm', args, { cwd, encoding: 'utf8', shell: true })
 
 before(async () => {
-  await rm(base, { recursive: true, force: true })
+  base = await mkdtemp(join(tmpdir(), 'skill-e2e-'))
+  hosted = join(base, 'skills', 'skill-starter')
   await mkdir(join(base, 'skills'), { recursive: true })
   await cp(join(repo, 'skills', 'skill-starter'), hosted, { recursive: true })
 })
 
 after(async () => {
   await rm(base, { recursive: true, force: true })
-  try {
-    await rmdir(join(here, '.tmp'))
-  } catch (error) {
-    if (error.code !== 'ENOTEMPTY' && error.code !== 'ENOENT') throw error
-  }
 })
 
 // 生成一次、三条测试共用：整个文件只 spawn 一次生成器。依赖写在每条测试的第一行（await demoProject()），

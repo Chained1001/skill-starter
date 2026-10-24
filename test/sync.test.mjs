@@ -2,7 +2,7 @@
 //
 // 这份仓库的分发形状是「上游 → 基座 → 本仓库 → payload → 派生项目」。每段都是复制，不是引用：
 //   · docs/规范/、templates/、scripts/ 在本仓库与 payload 各一份（payload 侧 Markdown 为 .md.tpl）
-//   · test/ 有 8 个文件与 payload 逐字相同（e2e、init-project 是本仓库独有）
+//   · test/ 顶层 12 个 .mjs 里有 9 个与 payload 逐字相同；另 3 个是本仓库独有（e2e、init-project、本文件）
 // 此前没有任何检查表达这件事：给 test/evals.test.mjs 加一行，npm test 仍 87 项全绿。
 //
 // 本文件只校验「本仓库 → payload」这一段。上游 → 基座 由基座的 standards/templates 测试守，

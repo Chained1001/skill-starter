@@ -30,7 +30,7 @@
 
 性质三档：交付＝随 `npx skills add` 安装；留存＝随仓库保留但不安装；开发＝只服务本仓库。
 
-`docs/规范/`、`templates/`、`scripts/`、`test/` 在本仓库与 `skills/skill-starter/payload/` 各存一份（payload 侧 Markdown 为 `.md.tpl`），必须逐字相等，由 `test/sync.test.mjs` 校验。该检查器只守这一段：上游 → 基座 由基座的 `standards`/`templates` 测试守，payload → 派生项目 由基座的 `pack`/`check-projects` 守。
+`docs/规范/`、`templates/`、`scripts/`、`test/` 在本仓库与 `skills/skill-starter/payload/` 各存一份（payload 侧 Markdown 为 `.md.tpl`），必须逐字相等，由 `test/sync.test.mjs` 校验。三个例外只在本仓库存在、不随包分发：`test/e2e.test.mjs`、`test/init-project.test.mjs`、`test/sync.test.mjs`——它们要验发布形态、要在基座内跑生成器、或本身就是这条链的检查器，进了 payload 就自相矛盾。该检查器只守这一段：上游 → 基座 由基座的 `standards`/`templates` 测试守，payload → 派生项目 由基座的 `pack`/`check-projects` 守。
 
 ### payload 是原料，不是可运行仓库
 

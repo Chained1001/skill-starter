@@ -58,6 +58,3 @@ export const noSpawn =
     ? {}
     : { skip: '当前环境禁止子进程管道（EPERM），需要子进程的测试要在普通终端运行' }
 
-// spawn 本仓库的一个脚本，返回 { status, stdout, stderr }。npm 在 Windows 上是 .cmd 垫片，
-// 走 npm 的场合请用 shell: true（见 test/e2e.test.mjs）。
-export const runNode = (script, args) => spawnSync(process.execPath, [script, ...args], { encoding: 'utf8' })

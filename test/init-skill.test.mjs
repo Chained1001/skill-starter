@@ -1,23 +1,26 @@
-import { after, test } from 'node:test'
+import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { existsSync } from 'node:fs'
-import { cp, mkdir, readdir, readFile, rm, rename, writeFile } from 'node:fs/promises'
+import { cp, mkdir, readdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { UsageError, initSkill, renderSkill } from '../scripts/init-skill.mjs'
 import { validateRepo } from '../scripts/validate.mjs'
+import { withSandbox as withBox } from './sandbox.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
 
-async function withSandbox(run) {
-  const root = join(here, '.tmp', `init-${process.hrtime.bigint()}`)
-  await mkdir(join(root, 'skills'), { recursive: true })
-  try {
-    await run(root)
-  } finally {
-    await rm(root, { recursive: true, force: true })
-  }
-}
+// 每个用例要一棵带 skills/ 的空树，用完删掉。位置与清理交给 test/sandbox.mjs。
+//
+// 这里曾经自建一套：根在仓库内 test/.tmp/init-<hrtime>，且文件末尾的 after() 清的是整个
+// test/.tmp —— 而 e2e.test.mjs 的树也在 test/.tmp 下。两个文件同时跑，谁先结束谁把对方
+// 的树删掉，e2e 报 EBUSY 或退出码 null。各清各的才是对的，而「各清各的」正是 sandbox
+// 给的性质：系统临时目录、名字唯一、谁建的谁删。
+const withSandbox = (run) =>
+  withBox(async (box) => {
+    await box.dir('skills')
+    return run(box.root)
+  })
 
 test('生成的技能替换了 name 与 description', async () => {
   await withSandbox(async (root) => {
@@ -212,8 +215,8 @@ test('--eval 遇到同名用例时不覆盖：报错退出，手写内容原样�
 // payload 自带的测试在随包形态下会全部报「模板缺失」——发布物无法自证是好的。
 // 这条把「脚本 + .tpl 化模板」整份复制到临时目录后动态 import，在进程内验证回退真的成立。
 test('模板为 .md.tpl 形态时（随包 payload）仍能生成：读取回退到 .tpl 变体', async () => {
-  const sandbox = join(here, '.tmp', 'tpl-fallback')
-  try {
+  await withBox(async (box) => {
+    const sandbox = await box.dir('tpl-fallback')
     await cp(join(here, '..', 'scripts'), join(sandbox, 'scripts'), { recursive: true })
     await cp(join(here, '..', 'templates'), join(sandbox, 'templates'), { recursive: true })
 
@@ -229,7 +232,7 @@ test('模板为 .md.tpl 形态时（随包 payload）仍能生成：读取回退
 
     // 动态 import 复制件，让它的 ../templates/ 指向这份 .tpl 化的模板。
     const mod = await import(`${pathToFileURL(join(sandbox, 'scripts', 'init-skill.mjs')).href}?t=${Date.now()}`)
-    const root = join(sandbox, 'out')
+    const root = await box.dir('out')
     await mkdir(join(root, 'skills'), { recursive: true })
 
     await mod.initSkill({ root, name: 'packed-skill', description: '当模板只有 .tpl 时使用。', withWorkflow: true, withEval: true })
@@ -239,14 +242,5 @@ test('模板为 .md.tpl 形态时（随包 payload）仍能生成：读取回退
     assert.ok(!text.includes('{{'), '渲染后不应残留占位符')
     assert.ok(existsSync(join(root, 'skills', 'packed-skill', 'workflows', '01-TODO.md')), '流程骨架也应从 .tpl 变体生成')
     assert.ok(existsSync(join(root, 'evals', 'cases', 'packed-skill.md')), '用例骨架也应从 .tpl 变体生成')
-  } finally {
-    await rm(sandbox, { recursive: true, force: true })
-  }
-})
-
-after(async () => {
-  // 这里只能按「本文件实际建过什么」清，不能按想当然的名字清：
-  // 曾写成 rm(join(here, '.tmp', 'init-skill'))，而 withSandbox 建的是 .tmp/init-<hrtime>，
-  // 名字对不上，每个临时目录都永久留在工作树里。
-  await rm(join(here, '.tmp'), { recursive: true, force: true })
+  })
 })

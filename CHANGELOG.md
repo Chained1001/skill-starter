@@ -8,12 +8,19 @@
 
 - 发版步骤第 5、6 条（打 tag、建 Release）此前一直没执行：tag 停在 `v0.4.0`，GitHub Releases 一条都没有，而 `npm test` 全绿——没有任何检查守这两条。已补 `v0.5.1`、`v0.5.2`、`v0.5.3` 三个 tag 与对应 Release（正文取自各 tag 所指提交里的 CHANGELOG 段，不是当前工作树）。0.5.0 无独立提交可指向，已在版本段内注明
 
+## [0.5.4] - 2026-10-24
+
+### Fixed
+
+- 随基座 v0.5.4 刷新：`test/init-skill.test.mjs` 的 `after()` 删整个 `test/.tmp`，而 `test/e2e.test.mjs` 的树也在那个父目录下，两个文件同时跑就互删对方的树。现改用 `test/sandbox.mjs`，各建各的、各删各的
+- `test/e2e.test.mjs` 改用 `test/sandbox.mjs` 的 `noSpawn`，并去掉第四份自建探针；临时树根移到系统临时目录
+
 ## [0.5.3] - 2026-10-24
 
 ### Fixed
 
 - 随基座 v0.5.3 刷新：`check-projects.mjs` 的同步范围漏检 18 个随包文件，含 `test/sandbox.mjs` 与 `test/` 下 6 个测试。范围原是九条手写枚举，覆盖 38 个文件，而派生项目实际收到 55 个。「基座改了、派生项目停在旧版」时它报「逐字一致」并退出 0。现改为按 `DROP` 清单反向推导，新增随包文件自动跟上
-- `test/check-projects.test.mjs` 新增一条断言，把「范围等于派生项目实际收到的文件」钉住：独立用 `initProject` 生成项目、清点实际收到的文件，与 `expandScope` 双向比对。改回窄枚举时它会红
+- 基座 `test/check-projects.test.mjs`（本仓库不随包，只在基座）新增一条断言，把「范围等于派生项目实际收到的文件」钉住：独立用 `initProject` 生成项目、清点实际收到的文件，与 `expandScope` 双向比对。改回窄枚举时它会红
 - `docs/规范/09-项目派生.md`：同步范围原写「下述固定清单」，把手写枚举当成事实源。改为指向推导规则并说明那一串是举例；已按上游 `规范/09` 同源更新
 
 ## [0.5.2] - 2026-10-24
@@ -21,7 +28,7 @@
 ### Added
 
 - 随基座 v0.5.2 刷新：新增 `test/sandbox.mjs`，临时工作区只有一个实现。此前六个测试文件各写一遍「建临时树、跑、保证删掉」，位置分 `test/.tmp/` 与系统临时目录两套，清理分 `try/finally`、`after()`、只清一半三种；清理写错不会被任何断言发现，第 0.5.1 轮修的那个 `.tmp` 泄漏就是它的实例
-- `test/cli.test.mjs`、`test/validate.test.mjs`、`test/install-hooks.test.mjs` 改用 `withSandbox`，删掉各自的 `tmpBase`/`after()`/`rmdir`；`noSpawn` 探针从三份合成一份（此前两处 skip 文案已经漂移）
+- `test/cli.test.mjs`、`test/validate.test.mjs`、`test/install-hooks.test.mjs` 改用 `withSandbox`，删掉各自的 `tmpBase`/`after()`/`rmdir`；`noSpawn` 探针从这两处加上 `install-hooks` 合成一份，`test/e2e.test.mjs` 当时未跟着改，第 0.5.4 轮补上
 - `AGENTS.md` 增「payload 是原料，不是可运行仓库」：写明 payload 里跑测试会有 10 条失败，原因是 `pack` 有意剔除根文件、Markdown 处于 `.md.tpl` 形态，属形态差异而非缺陷；并指明发布物的证明点在 `test/e2e.test.mjs` 展开后的项目里
 
 ### Changed
