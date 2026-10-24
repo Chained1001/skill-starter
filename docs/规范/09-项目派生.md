@@ -61,9 +61,12 @@
 
 基座升级时，项目按下表决定哪些文件跟随重新复制（基座到项目），哪些永不回灌（保留项目版本）：
 
-- 跟随重新复制：`docs/规范/` 全部、`scripts/validate.mjs`、`scripts/init-skill.mjs`、`scripts/install-hooks.mjs`（框架树标为必需，派生步骤 7 运行它）、`templates/` 全部、`.gitattributes` 与 `.gitignore`、`ci.yml` 等双份根文件（项目根与 `templates/root/` 各一份，同次改）、`test/version.test.mjs` 等基座演进新增的仓库级测试。
+- 跟随重新复制：`docs/规范/` 全部、`scripts/validate.mjs`、`scripts/init-skill.mjs`、`scripts/install-hooks.mjs`（框架树标为必需，派生步骤 7 运行它）、`templates/` 全部、`.gitattributes` 与 `.gitignore`、`ci.yml` 等双份根文件（项目根与 `templates/root/` 各一份，同次改）、`test/` 下的测试与辅助模块（含 `test/sandbox.mjs` 与夹具）。这一串是举例，不是穷举——完整范围以 `check-projects.mjs` 按 `DROP` 推导的结果为准。
 - 永不回灌：`skills/`、`evals/`、`docs/产品/`、`docs/技术/`，以及根 `README.md`、`AGENTS.md`、`CHANGELOG.md` 的项目内容。
-- 核对方法：优先在基座运行 `node scripts/check-projects.mjs <项目路径>`——它读项目根 `.base-version` 报告落后几版（未记录、早于基座 CHANGELOG 记录均计差距），并按下述固定清单逐文件比对：`docs/规范/*.md`、`scripts/validate.mjs`、`scripts/init-skill.mjs`、`templates/` 全部、`test/version.test.mjs`、`.gitignore`、`.gitattributes`、`.github/workflows/ci.yml`，内容不同或项目缺失都会列出；退出码 0 即范围内完全同步。「等基座演进新增的仓库级测试」里清单之外的新测试仍靠手工判断。脚本不可用时后退为全手工：与基座同名文件逐一 `diff`，内容不同的逐份判断——属基座演进的重新复制，属项目内容的保留。
+- 核对方法：优先在基座运行 `node scripts/check-projects.mjs <项目路径>`——它读项目根 `.base-version` 报告落后几版（未记录、早于基座 CHANGELOG 记录均计差距），再逐文件比对；退出码 0 即范围内完全同步。
+- 比对范围不必手工枚举：它就是「基座有、派生项目也会收到、且不是项目自己的内容」的全部文件，由 `init-project.mjs` 的 `DROP` 清单推导——`DROP` 表达「哪些不进派生项目」，反向即得范围。新增随包文件时范围自动跟上，不必回来改表。项目自己的内容按上一条「永不回灌」排除。
+- 此前此处写的是九条手写枚举，只覆盖 38 个文件，而派生项目实际收到 55 个；漏掉的含 `test/sandbox.mjs` 与 `test/` 下 6 个测试。「基座改了、派生项目停在旧版」在派生项目那边看不出异常，门禁也不会红——手写清单漏一个名字就等于漏检，且没有任何检查会发现清单本身不全。现在 `test/check-projects.test.mjs` 有一条断言把「范围等于派生项目实际收到的文件」钉住。
+- 脚本不可用时后退为全手工：与基座同名文件逐一 `diff`，内容不同的逐份判断——属基座演进的重新复制，属项目内容的保留。
 - 理由：基座只演进规范、模板、脚本与门禁，项目的技能与文档是项目自己的产出，两者不混。
 
 ## 不回灌的内容
