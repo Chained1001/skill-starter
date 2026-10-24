@@ -4,9 +4,17 @@
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-10-24
+
 ### Added
 
-- `AGENTS.md` 增「payload 是原料，不是可运行仓库」：写明 `skills/skill-starter/payload/` 里跑测试会得到 10 条失败，原因是 `pack` 有意剔除根文件、Markdown 处于 `.md.tpl` 形态，属形态差异而非缺陷；并指明发布物的证明点在 `test/e2e.test.mjs` 展开后的项目里。此前无任何文档说明这一点，第 0.5.1 轮曾有把形态差异误判为缺陷、进而想改测试期望值的弯路
+- 随基座 v0.5.2 刷新：新增 `test/sandbox.mjs`，临时工作区只有一个实现。此前六个测试文件各写一遍「建临时树、跑、保证删掉」，位置分 `test/.tmp/` 与系统临时目录两套，清理分 `try/finally`、`after()`、只清一半三种；清理写错不会被任何断言发现，第 0.5.1 轮修的那个 `.tmp` 泄漏就是它的实例
+- `test/cli.test.mjs`、`test/validate.test.mjs`、`test/install-hooks.test.mjs` 改用 `withSandbox`，删掉各自的 `tmpBase`/`after()`/`rmdir`；`noSpawn` 探针从三份合成一份（此前两处 skip 文案已经漂移）
+- `AGENTS.md` 增「payload 是原料，不是可运行仓库」：写明 payload 里跑测试会有 10 条失败，原因是 `pack` 有意剔除根文件、Markdown 处于 `.md.tpl` 形态，属形态差异而非缺陷；并指明发布物的证明点在 `test/e2e.test.mjs` 展开后的项目里
+
+### Changed
+
+- `test/init-project.test.mjs` 未改用 `withSandbox`：该文件 484 行、22 处 `try/finally`，两次机械改写都把嵌套结构弄坏。它被 `init-project` 的 DROP 清单排除、不随包分发，留着不影响交付物；要改须逐条手工做
 
 ## [0.5.1] - 2026-10-24
 

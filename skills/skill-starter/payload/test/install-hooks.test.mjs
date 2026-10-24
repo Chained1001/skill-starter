@@ -3,27 +3,22 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { existsSync, readFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { rm, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { HookExistsError, NotGitRepoError, UsageError, installHooks, parseArgs } from '../scripts/install-hooks.mjs'
+import { noSpawn, withSandbox } from './sandbox.mjs'
 
 const hookScript = join(dirname(fileURLToPath(import.meta.url)), '..', 'scripts', 'install-hooks.mjs')
 
-// 受限沙箱禁止子进程走管道（EPERM）。此时跳过 CLI 测试，并写明恢复条件。
-const probe = spawnSync(process.execPath, ['-e', "process.stdout.write('ok')"], { encoding: 'utf8' })
-const noSpawn = probe.stdout === 'ok' ? {} : { skip: '当前环境禁止子进程管道（EPERM），CLI 测试需在普通终端运行' }
 const cliTest = (name, fn) => test(name, noSpawn, fn)
 
+// 装钩子的用例都要一个带 .git/hooks 的仓库，这是本文件特有的布局，包一层省得每处重复。
 async function withRepo(run) {
-  const root = await mkdtemp(join(tmpdir(), 'hooks-'))
-  await mkdir(join(root, '.git', 'hooks'), { recursive: true })
-  try {
-    await run(root)
-  } finally {
-    await rm(root, { recursive: true, force: true })
-  }
+  await withSandbox(async (box) => {
+    await box.dir(join('.git', 'hooks'))
+    await run(box.root, box)
+  })
 }
 
 test('安装后钩子存在且调用 validate 与 test', async () => {
@@ -54,12 +49,9 @@ test('已有钩子时拒绝覆盖，--force 可覆盖', async () => {
 })
 
 test('非 git 仓库时拒绝安装', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'nogit-'))
-  try {
-    await assert.rejects(() => installHooks({ root }), NotGitRepoError)
-  } finally {
-    await rm(root, { recursive: true, force: true })
-  }
+  await withSandbox(async (box) => {
+    await assert.rejects(() => installHooks({ root: box.root }), NotGitRepoError)
+  })
 })
 
 test('--dry-run 不写文件', async () => {
@@ -106,14 +98,11 @@ cliTest('CLI：--help 退出码 0，未知参数退出码 2，非 git 仓库退�
 
   assert.equal(spawnSync(process.execPath, [hookScript, '--bogus'], { encoding: 'utf8' }).status, 2)
 
-  const root = await mkdtemp(join(tmpdir(), 'hooks-cli-'))
-  try {
-    const r = spawnSync(process.execPath, [hookScript, root], { encoding: 'utf8' })
+  await withSandbox(async (box) => {
+    const r = spawnSync(process.execPath, [hookScript, box.root], { encoding: 'utf8' })
     assert.equal(r.status, 1, `非 git 仓库应退出码 1，实际 ${r.status}：${r.stdout}\n${r.stderr}`)
     assert.match(r.stderr, /不是 git 仓库/)
-  } finally {
-    await rm(root, { recursive: true, force: true })
-  }
+  })
 })
 
 // --json 是给调用方解析的契约：参数错误与业务错误必须是同一种结构，只差退出码。
@@ -128,24 +117,21 @@ cliTest('CLI：--json 下参数错误也输出 E_ARGS（退出码 2）', async (
 })
 
 cliTest('CLI：--json 下 --package-dir 取值被拒也输出 E_ARGS（退出码 2）', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'hooks-json-'))
-  try {
-    await mkdir(join(root, '.git', 'hooks'), { recursive: true })
-    const r = spawnSync(process.execPath, [hookScript, root, '--package-dir', 'a\\b', '--json'], { encoding: 'utf8' })
+  await withSandbox(async (box) => {
+    await box.dir(join('.git', 'hooks'))
+    const r = spawnSync(process.execPath, [hookScript, box.root, '--package-dir', 'a\\b', '--json'], { encoding: 'utf8' })
     assert.equal(r.status, 2, `被拒的取值应退出码 2，实际 ${r.status}：${r.stdout}\n${r.stderr}`)
     assert.equal(JSON.parse(r.stdout).errors[0].code, 'E_ARGS')
-  } finally {
-    await rm(root, { recursive: true, force: true })
-  }
+  })
 })
 
 // core.hooksPath 一旦设了（husky、lefthook、monorepo 常见），<git dir>/hooks 下的钩子永不执行。
 // 那时仍往 .git/hooks 写并报「已安装」，等于静默失效。
 test('设置了 core.hooksPath 时装到该目录，而不是静默写进 .git/hooks', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'hooks-path-'))
-  try {
-    await mkdir(join(root, '.git', 'hooks'), { recursive: true })
-    await writeFile(join(root, '.git', 'config'), '[core]\n\trepositoryformatversion = 0\n\thooksPath = .husky\n', 'utf8')
+  await withSandbox(async (box) => {
+    const { root } = box
+    await box.dir(join('.git', 'hooks'))
+    await box.write(join('.git', 'config'), '[core]\n\trepositoryformatversion = 0\n\thooksPath = .husky\n')
 
     const result = await installHooks({ root })
     assert.equal(result.path, join(root, '.husky', 'pre-commit'), `钩子应装到 core.hooksPath 指定的 .husky/，实际 ${result.path}`)
@@ -158,7 +144,5 @@ test('设置了 core.hooksPath 时装到该目录，而不是静默写进 .git/h
     await writeFile(join(root, '.git', 'config'), `[core]\n\thooksPath = ${abs}\n`, 'utf8')
     const second = await installHooks({ root, force: true })
     assert.equal(second.path, join(abs, 'pre-commit'))
-  } finally {
-    await rm(root, { recursive: true, force: true })
-  }
+  })
 })

@@ -1,18 +1,11 @@
-import { after, test } from 'node:test'
+import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { rm, rmdir } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { checkSkillText, checkWorkflowFiles, checkWorkflowText, localLinks, parseArgs, parseFrontmatter, validateRepo } from '../scripts/validate.mjs'
+import { withSandbox } from './sandbox.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
-
-const tmpBase = async () => {
-  const { mkdir } = await import('node:fs/promises')
-  const base = join(here, '.tmp', 'validate')
-  await mkdir(base, { recursive: true })
-  return base
-}
 const fixtures = join(here, 'fixtures')
 const codes = (errors) => errors.map((e) => e.code)
 const skill = (frontmatter, body = '# 正文\n') => `---\n${frontmatter}\n---\n${body}`
@@ -116,23 +109,17 @@ test('目录缺少 SKILL.md 报 E_NO_SKILL_MD', async () => {
 })
 
 test('README 未在技能表行提及技能报 E_INDEX；散文提及不算，无 README 时不检查', async () => {
-  const { mkdtemp, mkdir, writeFile, rm } = await import('node:fs/promises')
-  const root = await mkdtemp(join(await tmpBase(), 'idx-'))
-  try {
-    const dir = join(root, 'skills', 'indexed-skill')
-    await mkdir(dir, { recursive: true })
-    await writeFile(join(dir, 'SKILL.md'), skill('name: indexed-skill\ndescription: 当需要测试索引时使用。'))
-    assert.deepEqual(await validateRepo(root), [], '无 README.md 时跳过索引检查')
+  await withSandbox(async (box) => {
+    await box.write('skills/indexed-skill/SKILL.md', skill('name: indexed-skill\ndescription: 当需要测试索引时使用。'))
+    assert.deepEqual(await validateRepo(box.root), [], '无 README.md 时跳过索引检查')
 
     // 散文顺带提及技能名不算入索引：必须出现在表格行（首列）才通过。
-    await writeFile(join(root, 'README.md'), '# 项目\n\n本项目的 indexed-skill 很好用。\n')
-    assert.deepEqual(codes(await validateRepo(root)), ['E_INDEX'])
+    await box.write('README.md', '# 项目\n\n本项目的 indexed-skill 很好用。\n')
+    assert.deepEqual(codes(await validateRepo(box.root)), ['E_INDEX'])
 
-    await writeFile(join(root, 'README.md'), '# 项目\n\n| 技能 | 用途 |\n|---|---|\n| indexed-skill | 测试 |\n')
-    assert.deepEqual(await validateRepo(root), [])
-  } finally {
-    await rm(root, { recursive: true, force: true })
-  }
+    await box.write('README.md', '# 项目\n\n| 技能 | 用途 |\n|---|---|\n| indexed-skill | 测试 |\n')
+    assert.deepEqual(await validateRepo(box.root), [])
+  })
 })
 
 test('引用越出技能目录报 E_LINK', async () => {
@@ -140,88 +127,57 @@ test('引用越出技能目录报 E_LINK', async () => {
 })
 
 test('E_NO_SKILLS_DIR 两分支：目录缺失与 skills 是文件', async () => {
-  const { mkdtemp, writeFile, rm } = await import('node:fs/promises')
-  const emptyRoot = await mkdtemp(join(await tmpBase(), 'noskills-'))
-  const fileRoot = await mkdtemp(join(await tmpBase(), 'skillsfile-'))
-  try {
-    assert.deepEqual(await validateRepo(emptyRoot), [{ code: 'E_NO_SKILLS_DIR', file: 'skills/', message: '缺少 skills/ 目录' }])
-    await writeFile(join(fileRoot, 'skills'), 'skills 被文件占位', 'utf8')
-    assert.deepEqual(await validateRepo(fileRoot), [{ code: 'E_NO_SKILLS_DIR', file: 'skills/', message: 'skills/ 不是目录，请改为目录并放入技能' }])
-  } finally {
-    await rm(emptyRoot, { recursive: true, force: true })
-    await rm(fileRoot, { recursive: true, force: true })
-  }
+  await withSandbox(async (empty) => {
+    assert.deepEqual(await validateRepo(empty.root), [{ code: 'E_NO_SKILLS_DIR', file: 'skills/', message: '缺少 skills/ 目录' }])
+  })
+  await withSandbox(async (box) => {
+    await box.write('skills', 'skills 被文件占位')
+    assert.deepEqual(await validateRepo(box.root), [{ code: 'E_NO_SKILLS_DIR', file: 'skills/', message: 'skills/ 不是目录，请改为目录并放入技能' }])
+  })
 })
 
 test('本基座自身通过校验', async () => {
   assert.deepEqual(await validateRepo(join(here, '..')), [])
 })
 
+// 下面四条验证「validateRepo 把流程检查串起来」，装配方式相同，只有内容不同。
+const flowSkill = async (box, workflows) => {
+  await box.write('skills/flow-skill/SKILL.md', skill('name: flow-skill\ndescription: 当需要测试流程时使用。', '# 入口\n'))
+  for (const [name, text] of Object.entries(workflows)) await box.write(`skills/flow-skill/workflows/${name}`, text)
+}
+const FULL_WORKFLOW = '## 目的\n\nx\n\n## 输入\n\nx\n\n## 步骤\n\nx\n\n## 产出\n\nx\n\n## 停止条件\n\nx\n'
+
 test('workflows 中的流程文件缺少固定小节报 E_WORKFLOW_SECTION', async () => {
-  const { mkdtemp, mkdir, writeFile, rm } = await import('node:fs/promises')
-  const root = await mkdtemp(join(await tmpBase(), 'wf-'))
-  try {
-    const dir = join(root, 'skills', 'flow-skill')
-    await mkdir(join(dir, 'workflows'), { recursive: true })
-    await writeFile(join(dir, 'SKILL.md'), skill('name: flow-skill\ndescription: 当需要测试流程时使用。', '# 入口\n'))
-    await writeFile(join(dir, 'workflows', '01-抽取.md'), '# 抽取\n\n## 目的\n\n只有目的。\n')
-    assert.ok(codes(await validateRepo(root)).includes('E_WORKFLOW_SECTION'))
-  } finally {
-    await rm(root, { recursive: true, force: true })
-  }
+  await withSandbox(async (box) => {
+    await flowSkill(box, { '01-抽取.md': '# 抽取\n\n## 目的\n\n只有目的。\n' })
+    assert.ok(codes(await validateRepo(box.root)).includes('E_WORKFLOW_SECTION'))
+  })
 })
 
 test('workflows 序号不连续报 E_WORKFLOW_ORDER', async () => {
-  const { mkdtemp, mkdir, writeFile, rm } = await import('node:fs/promises')
-  const root = await mkdtemp(join(await tmpBase(), 'wf-'))
-  const full = '## 目的\n\nx\n\n## 输入\n\nx\n\n## 步骤\n\nx\n\n## 产出\n\nx\n\n## 停止条件\n\nx\n'
-  try {
-    const dir = join(root, 'skills', 'flow-skill')
-    await mkdir(join(dir, 'workflows'), { recursive: true })
-    await writeFile(join(dir, 'SKILL.md'), skill('name: flow-skill\ndescription: 当需要测试流程时使用。', '# 入口\n'))
-    await writeFile(join(dir, 'workflows', '01-抽取.md'), '# 抽取\n\n' + full)
-    await writeFile(join(dir, 'workflows', '03-校对.md'), '# 校对\n\n' + full)
-    assert.ok(codes(await validateRepo(root)).includes('E_WORKFLOW_ORDER'))
-  } finally {
-    await rm(root, { recursive: true, force: true })
-  }
+  await withSandbox(async (box) => {
+    await flowSkill(box, { '01-抽取.md': `# 抽取\n\n${FULL_WORKFLOW}`, '03-校对.md': `# 校对\n\n${FULL_WORKFLOW}` })
+    assert.ok(codes(await validateRepo(box.root)).includes('E_WORKFLOW_ORDER'))
+  })
 })
 
 test('workflows 文件结构完整且序号连续时通过', async () => {
-  const { mkdtemp, mkdir, writeFile, rm } = await import('node:fs/promises')
-  const root = await mkdtemp(join(await tmpBase(), 'wf-'))
-  const full = '## 目的\n\nx\n\n## 输入\n\nx\n\n## 步骤\n\nx\n\n## 产出\n\nx\n\n## 停止条件\n\nx\n'
-  try {
-    const dir = join(root, 'skills', 'flow-skill')
-    await mkdir(join(dir, 'workflows'), { recursive: true })
-    await writeFile(join(dir, 'SKILL.md'), skill('name: flow-skill\ndescription: 当需要测试流程时使用。', '# 入口\n'))
-    await writeFile(join(dir, 'workflows', '01-抽取.md'), '# 抽取\n\n' + full)
-    await writeFile(join(dir, 'workflows', '02-校对.md'), '# 校对\n\n' + full)
-    assert.deepEqual(await validateRepo(root), [])
-  } finally {
-    await rm(root, { recursive: true, force: true })
-  }
+  await withSandbox(async (box) => {
+    await flowSkill(box, { '01-抽取.md': `# 抽取\n\n${FULL_WORKFLOW}`, '02-校对.md': `# 校对\n\n${FULL_WORKFLOW}` })
+    assert.deepEqual(await validateRepo(box.root), [])
+  })
 })
 
 test('流程文件名含 TODO 报 E_PLACEHOLDER，内容不含 TODO 时不误报正文占位符', async () => {
-  const { mkdtemp, mkdir, writeFile, rm } = await import('node:fs/promises')
-  const root = await mkdtemp(join(await tmpBase(), 'wf-'))
-  const full = '## 目的\n\nx\n\n## 输入\n\nx\n\n## 步骤\n\nx\n\n## 产出\n\nx\n\n## 停止条件\n\nx\n'
-  try {
-    const dir = join(root, 'skills', 'flow-skill')
-    await mkdir(join(dir, 'workflows'), { recursive: true })
-    await writeFile(join(dir, 'SKILL.md'), skill('name: flow-skill\ndescription: 当需要测试流程时使用。', '# 入口\n'))
-    await writeFile(join(dir, 'workflows', '01-TODO.md'), '# 骨架\n\n' + full)
-    const errs = await validateRepo(root)
+  await withSandbox(async (box) => {
+    await flowSkill(box, { '01-TODO.md': `# 骨架\n\n${FULL_WORKFLOW}` })
+    const errs = await validateRepo(box.root)
     assert.deepEqual(errs.map((e) => `${e.code}@${e.file}`), [`E_PLACEHOLDER@skills/flow-skill/workflows/01-TODO.md`])
-  } finally {
-    await rm(root, { recursive: true, force: true })
-  }
+  })
 })
 
 // 以下四条直接调纯函数，不经磁盘：上面那四条集成测试验的是「validateRepo 把它们串起来」，
 // 这里验的是规则本身。规则是纯函数，字面量输入就够，造树只在验串联时才必要。
-const FULL_WORKFLOW = '## 目的\n\nx\n\n## 输入\n\nx\n\n## 步骤\n\nx\n\n## 产出\n\nx\n\n## 停止条件\n\nx\n'
 
 test('checkWorkflowFiles：文件名规则与序号连续性只看名字，不必造树', () => {
   assert.deepEqual(checkWorkflowFiles(['01-抽取.md', '02-校对.md']), [], '连续序号应无错')
@@ -257,13 +213,4 @@ test('parseFrontmatter：分出字段与正文；无 frontmatter 时返回 error
   const bare = parseFrontmatter('# 没有 frontmatter\n')
   assert.ok(bare.error, '无 frontmatter 应返回 error')
   assert.ok(!bare.fields, '不得伪造空字段')
-})
-
-after(async () => {
-  await rm(join(here, '.tmp', 'validate'), { recursive: true, force: true })
-  try {
-    await rmdir(join(here, '.tmp'))
-  } catch (error) {
-    if (error.code !== 'ENOTEMPTY' && error.code !== 'ENOENT') throw error
-  }
 })
