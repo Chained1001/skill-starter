@@ -32,6 +32,18 @@
 
 `docs/规范/`、`templates/`、`scripts/`、`test/` 在本仓库与 `skills/skill-starter/payload/` 各存一份（payload 侧 Markdown 为 `.md.tpl`），必须逐字相等，由 `test/sync.test.mjs` 校验。该检查器只守这一段：上游 → 基座 由基座的 `standards`/`templates` 测试守，payload → 派生项目 由基座的 `pack`/`check-projects` 守。
 
+### payload 是原料，不是可运行仓库
+
+`skills/skill-starter/payload/` 里**不要**直接跑 `npm test`。它是展开用的原料仓，不是完整仓库：
+
+- 没有 `CHANGELOG.md`、`README.md`、`AGENTS.md`、`.gitignore`、`.github/`（`pack` 有意剔除，展开时从 `templates/root/` 生成）
+- `docs/规范/*.md`、`templates/**/*.md`、`test/fixtures/**/*.md` 是 `.md.tpl` 形态，未被 `validate.mjs` 与各测试的读取逻辑认得（它们只认展平后的 `.md`）
+- `package.json` 的 `name` 是 `framework-base`，不是本仓库名
+
+因此在 payload 目录里跑测试会得到 10 条失败（`validate` 装配夹具 5 条、`cli` 的 `--json` 2 条、`standards` 2 条、`version` 1 条）。**这些失败是形态差异，不是缺陷**——不要为了让它们变绿去改测试期望值。
+
+发布物是否好的，由 `test/e2e.test.mjs` 在**展开后的项目**里证明：它把 `skills/skill-starter/` 复制到临时目录、用 `init-project.mjs --source payload` 展开成真项目，再在里面跑 `npm run validate` 与 `npm test`，两者退出码必须为 0。要验发布物，跑那条；不要验 payload 目录。
+
 ## 改动边界
 
 | 位置 | 可否手改 | 改动方式 |

@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- `AGENTS.md` 增「payload 是原料，不是可运行仓库」：写明 `skills/skill-starter/payload/` 里跑测试会得到 10 条失败，原因是 `pack` 有意剔除根文件、Markdown 处于 `.md.tpl` 形态，属形态差异而非缺陷；并指明发布物的证明点在 `test/e2e.test.mjs` 展开后的项目里。此前无任何文档说明这一点，第 0.5.1 轮曾有把形态差异误判为缺陷、进而想改测试期望值的弯路
+
 ## [0.5.1] - 2026-10-24
 
 ### Added
